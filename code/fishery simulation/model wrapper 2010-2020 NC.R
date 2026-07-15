@@ -179,7 +179,7 @@ saveRDS(p_star_values_all_y, file = paste0(input_data_cd, "p_star_values_2019_20
 
  rm(list = ls())
  input_data_cd <- "E:/Lou_projects/welfare-model-GoM/input_data/"
- input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/code/"
+ input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/Climate-and-Catch-Dependence-in-Rec.-Fisheries/code/fishery simulation/"
  output_data_cd<- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/"
 
  library(plyr)
@@ -195,6 +195,274 @@ saveRDS(p_star_values_all_y, file = paste0(input_data_cd, "p_star_values_2019_20
  conflicts_prefer(dplyr::count)
  options(scipen = 999)
 
+ 
+ ## Helpers 
+ 
+ # Return Kendall's tau only when both variables contain variation.
+ # A constant variable makes Kendall's tau undefined, not zero.
+ safe_kendall_tau <- function(x, y) {
+   
+   ok <- stats::complete.cases(x, y)
+   x <- x[ok]
+   y <- y[ok]
+   
+   n_complete <- length(x)
+   
+   if (
+     n_complete < 2L ||
+     dplyr::n_distinct(x) < 2L ||
+     dplyr::n_distinct(y) < 2L
+   ) {
+     return(
+       tibble::tibble(
+         tau = NA_real_,
+         p_value = NA_real_,
+         n_complete = n_complete,
+         valid_tau = FALSE
+       )
+     )
+   }
+   
+   test <- suppressWarnings(
+     stats::cor.test(
+       x,
+       y,
+       method = "kendall",
+       exact = FALSE
+     )
+   )
+   
+   tibble::tibble(
+     tau = unname(test$estimate),
+     p_value = test$p.value,
+     n_complete = n_complete,
+     valid_tau = TRUE
+   )
+ }
+ 
+ 
+ # Compute keep and total-catch tau within one state-mode-area-month stratum.
+ compute_stratum_tau <- function(data) {
+   
+   keep_tau <- safe_kendall_tau(
+     data$tot_keep_cod_new,
+     data$tot_keep_hadd_new
+   )
+   
+   catch_tau <- safe_kendall_tau(
+     data$tot_cat_cod_new,
+     data$tot_cat_hadd_new
+   )
+   
+   tibble::tibble(
+     k_tau_keep_est = keep_tau$tau,
+     k_tau_keep_p = keep_tau$p_value,
+     n_keep_complete = keep_tau$n_complete,
+     valid_keep_tau = keep_tau$valid_tau,
+     
+     k_tau_catch_est = catch_tau$tau,
+     k_tau_catch_p = catch_tau$p_value,
+     n_catch_complete = catch_tau$n_complete,
+     valid_catch_tau = catch_tau$valid_tau,
+     
+     med_cod = stats::median(
+       data$tot_cat_cod_new,
+       na.rm = TRUE
+     ),
+     
+     med_hadd = stats::median(
+       data$tot_cat_hadd_new,
+       na.rm = TRUE
+     )
+   )
+ }
+ 
+ 
+ # Average stratum-level tau estimates.
+ #
+ # The weighted mean uses projected trips in each stratum.
+ # The unweighted mean is retained as a diagnostic.
+ #
+ # P-values are not averaged because an average p-value has no useful
+ # inferential interpretation.
+ aggregate_stratum_tau <- function(
+    data,
+    reporting_vars,
+    domain_label = NULL
+ ) {
+   
+   reporting_vars <- rlang::syms(reporting_vars)
+   
+   # Rename input columns so their names cannot be overwritten sequentially
+   # inside dplyr::summarise().
+   data_for_summary <- data %>%
+     dplyr::mutate(
+       tau_keep_stratum = k_tau_keep_est,
+       tau_catch_stratum = k_tau_catch_est,
+       med_cod_stratum = med_cod,
+       med_hadd_stratum = med_hadd,
+       stratum_weight = ntrips_alt,
+       
+       valid_keep_weighted =
+         !is.na(tau_keep_stratum) &
+         !is.na(stratum_weight) &
+         stratum_weight > 0,
+       
+       valid_catch_weighted =
+         !is.na(tau_catch_stratum) &
+         !is.na(stratum_weight) &
+         stratum_weight > 0
+     )
+   
+   out <- data_for_summary %>%
+     dplyr::group_by(!!!reporting_vars) %>%
+     dplyr::summarise(
+       
+       # Projected-trip-weighted average across valid strata
+       k_tau_keep_est = {
+         use <- valid_keep_weighted
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = tau_keep_stratum[use],
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       k_tau_catch_est = {
+         use <- valid_catch_weighted
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = tau_catch_stratum[use],
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       # Equal-weight average across strata with defined tau
+       k_tau_keep_unweighted = {
+         use <- !is.na(tau_keep_stratum)
+         
+         if (any(use)) {
+           mean(tau_keep_stratum[use])
+         } else {
+           NA_real_
+         }
+       },
+       
+       k_tau_catch_unweighted = {
+         use <- !is.na(tau_catch_stratum)
+         
+         if (any(use)) {
+           mean(tau_catch_stratum[use])
+         } else {
+           NA_real_
+         }
+       },
+       
+       # Sensitivity result: treat undefined tau as zero
+       k_tau_keep_zero_filled = {
+         use <- !is.na(stratum_weight) & stratum_weight > 0
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = tidyr::replace_na(
+               tau_keep_stratum[use],
+               0
+             ),
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       k_tau_catch_zero_filled = {
+         use <- !is.na(stratum_weight) & stratum_weight > 0
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = tidyr::replace_na(
+               tau_catch_stratum[use],
+               0
+             ),
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       med_cod = {
+         use <- !is.na(med_cod_stratum) &
+           !is.na(stratum_weight) &
+           stratum_weight > 0
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = med_cod_stratum[use],
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       med_hadd = {
+         use <- !is.na(med_hadd_stratum) &
+           !is.na(stratum_weight) &
+           stratum_weight > 0
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = med_hadd_stratum[use],
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       n_strata = dplyr::n(),
+       
+       n_valid_keep_strata = sum(
+         !is.na(tau_keep_stratum)
+       ),
+       
+       n_valid_catch_strata = sum(
+         !is.na(tau_catch_stratum)
+       ),
+       
+       projected_trips = sum(
+         stratum_weight,
+         na.rm = TRUE
+       ),
+       
+       .groups = "drop"
+     ) %>%
+     dplyr::mutate(
+       # P-values should not be averaged across strata
+       k_tau_keep_p = NA_real_,
+       k_tau_catch_p = NA_real_
+     )
+   
+   if (!is.null(domain_label)) {
+     out <- out %>%
+       dplyr::mutate(
+         domain1 = domain_label
+       )
+   }
+   
+   out
+ }
+ 
+ 
  n_draws<-100 #number of simulated choice occasions per period
  n_catch_draws<-30 #number of catch draws per choice occasions
 
@@ -250,8 +518,9 @@ saveRDS(p_star_values_all_y, file = paste0(input_data_cd, "p_star_values_2019_20
 
    source(paste0(input_code_cd,"projection function new2.R"))
 
-   write_xlsx(ktaus_all, paste0(output_data_cd,"ktau_output_y2021_outliers_newCV_2-17-26_draw", i, ".xlsx"))  #save the data
-   write_xlsx(sims_all, paste0(output_data_cd,"model_output_y2021_outliers_newCV_2-17-26_draw", i, ".xlsx"))  #save the data
+   write_xlsx(ktaus_all, paste0(output_data_cd,"ktau_output_y2021_outliers_newCV_7-13-26_draw", i, ".xlsx"))  #save the data
+   write_xlsx(ktaus_strata_all, paste0(output_data_cd,"ktau_output_strata_y2021_outliers_newCV_7-13-26_draw", i, ".xlsx"))  #save the data
+   write_xlsx(sims_all, paste0(output_data_cd,"model_output_y2021_outliers_newCV_7-13-26_draw", i, ".xlsx"))  #save the data
    
  }
 
@@ -263,7 +532,7 @@ saveRDS(p_star_values_all_y, file = paste0(input_data_cd, "p_star_values_2019_20
  
  rm(list = ls())
  input_data_cd <- "E:/Lou_projects/welfare-model-GoM/input_data/"
- input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/code/"
+ input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/Climate-and-Catch-Dependence-in-Rec.-Fisheries/code/fishery simulation/"
  output_data_cd<- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/"
  
  library(plyr)
@@ -278,6 +547,274 @@ saveRDS(p_star_values_all_y, file = paste0(input_data_cd, "p_star_values_2019_20
  conflicts_prefer(dplyr::summarise)
  conflicts_prefer(dplyr::count)
  options(scipen = 999)
+ 
+ 
+ ## Helpers 
+ 
+ # Return Kendall's tau only when both variables contain variation.
+ # A constant variable makes Kendall's tau undefined, not zero.
+ safe_kendall_tau <- function(x, y) {
+   
+   ok <- stats::complete.cases(x, y)
+   x <- x[ok]
+   y <- y[ok]
+   
+   n_complete <- length(x)
+   
+   if (
+     n_complete < 2L ||
+     dplyr::n_distinct(x) < 2L ||
+     dplyr::n_distinct(y) < 2L
+   ) {
+     return(
+       tibble::tibble(
+         tau = NA_real_,
+         p_value = NA_real_,
+         n_complete = n_complete,
+         valid_tau = FALSE
+       )
+     )
+   }
+   
+   test <- suppressWarnings(
+     stats::cor.test(
+       x,
+       y,
+       method = "kendall",
+       exact = FALSE
+     )
+   )
+   
+   tibble::tibble(
+     tau = unname(test$estimate),
+     p_value = test$p.value,
+     n_complete = n_complete,
+     valid_tau = TRUE
+   )
+ }
+ 
+ 
+ # Compute keep and total-catch tau within one state-mode-area-month stratum.
+ compute_stratum_tau <- function(data) {
+   
+   keep_tau <- safe_kendall_tau(
+     data$tot_keep_cod_new,
+     data$tot_keep_hadd_new
+   )
+   
+   catch_tau <- safe_kendall_tau(
+     data$tot_cat_cod_new,
+     data$tot_cat_hadd_new
+   )
+   
+   tibble::tibble(
+     k_tau_keep_est = keep_tau$tau,
+     k_tau_keep_p = keep_tau$p_value,
+     n_keep_complete = keep_tau$n_complete,
+     valid_keep_tau = keep_tau$valid_tau,
+     
+     k_tau_catch_est = catch_tau$tau,
+     k_tau_catch_p = catch_tau$p_value,
+     n_catch_complete = catch_tau$n_complete,
+     valid_catch_tau = catch_tau$valid_tau,
+     
+     med_cod = stats::median(
+       data$tot_cat_cod_new,
+       na.rm = TRUE
+     ),
+     
+     med_hadd = stats::median(
+       data$tot_cat_hadd_new,
+       na.rm = TRUE
+     )
+   )
+ }
+ 
+ 
+ # Average stratum-level tau estimates.
+ #
+ # The weighted mean uses projected trips in each stratum.
+ # The unweighted mean is retained as a diagnostic.
+ #
+ # P-values are not averaged because an average p-value has no useful
+ # inferential interpretation.
+ aggregate_stratum_tau <- function(
+    data,
+    reporting_vars,
+    domain_label = NULL
+ ) {
+   
+   reporting_vars <- rlang::syms(reporting_vars)
+   
+   # Rename input columns so their names cannot be overwritten sequentially
+   # inside dplyr::summarise().
+   data_for_summary <- data %>%
+     dplyr::mutate(
+       tau_keep_stratum = k_tau_keep_est,
+       tau_catch_stratum = k_tau_catch_est,
+       med_cod_stratum = med_cod,
+       med_hadd_stratum = med_hadd,
+       stratum_weight = ntrips_alt,
+       
+       valid_keep_weighted =
+         !is.na(tau_keep_stratum) &
+         !is.na(stratum_weight) &
+         stratum_weight > 0,
+       
+       valid_catch_weighted =
+         !is.na(tau_catch_stratum) &
+         !is.na(stratum_weight) &
+         stratum_weight > 0
+     )
+   
+   out <- data_for_summary %>%
+     dplyr::group_by(!!!reporting_vars) %>%
+     dplyr::summarise(
+       
+       # Projected-trip-weighted average across valid strata
+       k_tau_keep_est = {
+         use <- valid_keep_weighted
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = tau_keep_stratum[use],
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       k_tau_catch_est = {
+         use <- valid_catch_weighted
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = tau_catch_stratum[use],
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       # Equal-weight average across strata with defined tau
+       k_tau_keep_unweighted = {
+         use <- !is.na(tau_keep_stratum)
+         
+         if (any(use)) {
+           mean(tau_keep_stratum[use])
+         } else {
+           NA_real_
+         }
+       },
+       
+       k_tau_catch_unweighted = {
+         use <- !is.na(tau_catch_stratum)
+         
+         if (any(use)) {
+           mean(tau_catch_stratum[use])
+         } else {
+           NA_real_
+         }
+       },
+       
+       # Sensitivity result: treat undefined tau as zero
+       k_tau_keep_zero_filled = {
+         use <- !is.na(stratum_weight) & stratum_weight > 0
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = tidyr::replace_na(
+               tau_keep_stratum[use],
+               0
+             ),
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       k_tau_catch_zero_filled = {
+         use <- !is.na(stratum_weight) & stratum_weight > 0
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = tidyr::replace_na(
+               tau_catch_stratum[use],
+               0
+             ),
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       med_cod = {
+         use <- !is.na(med_cod_stratum) &
+           !is.na(stratum_weight) &
+           stratum_weight > 0
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = med_cod_stratum[use],
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       med_hadd = {
+         use <- !is.na(med_hadd_stratum) &
+           !is.na(stratum_weight) &
+           stratum_weight > 0
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = med_hadd_stratum[use],
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       n_strata = dplyr::n(),
+       
+       n_valid_keep_strata = sum(
+         !is.na(tau_keep_stratum)
+       ),
+       
+       n_valid_catch_strata = sum(
+         !is.na(tau_catch_stratum)
+       ),
+       
+       projected_trips = sum(
+         stratum_weight,
+         na.rm = TRUE
+       ),
+       
+       .groups = "drop"
+     ) %>%
+     dplyr::mutate(
+       # P-values should not be averaged across strata
+       k_tau_keep_p = NA_real_,
+       k_tau_catch_p = NA_real_
+     )
+   
+   if (!is.null(domain_label)) {
+     out <- out %>%
+       dplyr::mutate(
+         domain1 = domain_label
+       )
+   }
+   
+   out
+ }
+ 
  
  n_draws<-100 #number of simulated choice occasions per period
  n_catch_draws<-30 #number of catch draws per choice occasions
@@ -334,9 +871,10 @@ saveRDS(p_star_values_all_y, file = paste0(input_data_cd, "p_star_values_2019_20
    catch_data_all <- data.frame(read_csv(paste0(input_data_cd, "projection_catch_draw", i, "_2020.csv"), show_col_types = FALSE))
    
    source(paste0(input_code_cd,"projection function new2.R"))
-
-   write_xlsx(ktaus_all, paste0(output_data_cd,"ktau_output_y2020_outliers_newCV_2-17-26_draw", i, ".xlsx"))  #save the data
-   write_xlsx(sims_all, paste0(output_data_cd,"model_output_y2020_outliers_newCV_2-17-26_draw", i, ".xlsx"))  #save the data
+   
+   write_xlsx(ktaus_all, paste0(output_data_cd,"ktau_output_y2020_outliers_newCV_7-13-26_draw", i, ".xlsx"))  #save the data
+   write_xlsx(ktaus_strata_all, paste0(output_data_cd,"ktau_output_strata_y2020_outliers_newCV_7-13-26_draw", i, ".xlsx"))  #save the data
+   write_xlsx(sims_all, paste0(output_data_cd,"model_output_y2020_outliers_newCV_7-13-26_draw", i, ".xlsx"))  #save the data
    
  }
  
@@ -347,7 +885,7 @@ saveRDS(p_star_values_all_y, file = paste0(input_data_cd, "p_star_values_2019_20
  
  rm(list = ls())
  input_data_cd <- "E:/Lou_projects/welfare-model-GoM/input_data/"
- input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/code/"
+ input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/Climate-and-Catch-Dependence-in-Rec.-Fisheries/code/fishery simulation/"
  output_data_cd<- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/"
  
  library(plyr)
@@ -362,6 +900,274 @@ saveRDS(p_star_values_all_y, file = paste0(input_data_cd, "p_star_values_2019_20
  conflicts_prefer(dplyr::summarise)
  conflicts_prefer(dplyr::count)
  options(scipen = 999)
+ 
+ 
+ ## Helpers 
+ 
+ # Return Kendall's tau only when both variables contain variation.
+ # A constant variable makes Kendall's tau undefined, not zero.
+ safe_kendall_tau <- function(x, y) {
+   
+   ok <- stats::complete.cases(x, y)
+   x <- x[ok]
+   y <- y[ok]
+   
+   n_complete <- length(x)
+   
+   if (
+     n_complete < 2L ||
+     dplyr::n_distinct(x) < 2L ||
+     dplyr::n_distinct(y) < 2L
+   ) {
+     return(
+       tibble::tibble(
+         tau = NA_real_,
+         p_value = NA_real_,
+         n_complete = n_complete,
+         valid_tau = FALSE
+       )
+     )
+   }
+   
+   test <- suppressWarnings(
+     stats::cor.test(
+       x,
+       y,
+       method = "kendall",
+       exact = FALSE
+     )
+   )
+   
+   tibble::tibble(
+     tau = unname(test$estimate),
+     p_value = test$p.value,
+     n_complete = n_complete,
+     valid_tau = TRUE
+   )
+ }
+ 
+ 
+ # Compute keep and total-catch tau within one state-mode-area-month stratum.
+ compute_stratum_tau <- function(data) {
+   
+   keep_tau <- safe_kendall_tau(
+     data$tot_keep_cod_new,
+     data$tot_keep_hadd_new
+   )
+   
+   catch_tau <- safe_kendall_tau(
+     data$tot_cat_cod_new,
+     data$tot_cat_hadd_new
+   )
+   
+   tibble::tibble(
+     k_tau_keep_est = keep_tau$tau,
+     k_tau_keep_p = keep_tau$p_value,
+     n_keep_complete = keep_tau$n_complete,
+     valid_keep_tau = keep_tau$valid_tau,
+     
+     k_tau_catch_est = catch_tau$tau,
+     k_tau_catch_p = catch_tau$p_value,
+     n_catch_complete = catch_tau$n_complete,
+     valid_catch_tau = catch_tau$valid_tau,
+     
+     med_cod = stats::median(
+       data$tot_cat_cod_new,
+       na.rm = TRUE
+     ),
+     
+     med_hadd = stats::median(
+       data$tot_cat_hadd_new,
+       na.rm = TRUE
+     )
+   )
+ }
+ 
+ 
+ # Average stratum-level tau estimates.
+ #
+ # The weighted mean uses projected trips in each stratum.
+ # The unweighted mean is retained as a diagnostic.
+ #
+ # P-values are not averaged because an average p-value has no useful
+ # inferential interpretation.
+ aggregate_stratum_tau <- function(
+    data,
+    reporting_vars,
+    domain_label = NULL
+ ) {
+   
+   reporting_vars <- rlang::syms(reporting_vars)
+   
+   # Rename input columns so their names cannot be overwritten sequentially
+   # inside dplyr::summarise().
+   data_for_summary <- data %>%
+     dplyr::mutate(
+       tau_keep_stratum = k_tau_keep_est,
+       tau_catch_stratum = k_tau_catch_est,
+       med_cod_stratum = med_cod,
+       med_hadd_stratum = med_hadd,
+       stratum_weight = ntrips_alt,
+       
+       valid_keep_weighted =
+         !is.na(tau_keep_stratum) &
+         !is.na(stratum_weight) &
+         stratum_weight > 0,
+       
+       valid_catch_weighted =
+         !is.na(tau_catch_stratum) &
+         !is.na(stratum_weight) &
+         stratum_weight > 0
+     )
+   
+   out <- data_for_summary %>%
+     dplyr::group_by(!!!reporting_vars) %>%
+     dplyr::summarise(
+       
+       # Projected-trip-weighted average across valid strata
+       k_tau_keep_est = {
+         use <- valid_keep_weighted
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = tau_keep_stratum[use],
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       k_tau_catch_est = {
+         use <- valid_catch_weighted
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = tau_catch_stratum[use],
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       # Equal-weight average across strata with defined tau
+       k_tau_keep_unweighted = {
+         use <- !is.na(tau_keep_stratum)
+         
+         if (any(use)) {
+           mean(tau_keep_stratum[use])
+         } else {
+           NA_real_
+         }
+       },
+       
+       k_tau_catch_unweighted = {
+         use <- !is.na(tau_catch_stratum)
+         
+         if (any(use)) {
+           mean(tau_catch_stratum[use])
+         } else {
+           NA_real_
+         }
+       },
+       
+       # Sensitivity result: treat undefined tau as zero
+       k_tau_keep_zero_filled = {
+         use <- !is.na(stratum_weight) & stratum_weight > 0
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = tidyr::replace_na(
+               tau_keep_stratum[use],
+               0
+             ),
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       k_tau_catch_zero_filled = {
+         use <- !is.na(stratum_weight) & stratum_weight > 0
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = tidyr::replace_na(
+               tau_catch_stratum[use],
+               0
+             ),
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       med_cod = {
+         use <- !is.na(med_cod_stratum) &
+           !is.na(stratum_weight) &
+           stratum_weight > 0
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = med_cod_stratum[use],
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       med_hadd = {
+         use <- !is.na(med_hadd_stratum) &
+           !is.na(stratum_weight) &
+           stratum_weight > 0
+         
+         if (any(use)) {
+           stats::weighted.mean(
+             x = med_hadd_stratum[use],
+             w = stratum_weight[use]
+           )
+         } else {
+           NA_real_
+         }
+       },
+       
+       n_strata = dplyr::n(),
+       
+       n_valid_keep_strata = sum(
+         !is.na(tau_keep_stratum)
+       ),
+       
+       n_valid_catch_strata = sum(
+         !is.na(tau_catch_stratum)
+       ),
+       
+       projected_trips = sum(
+         stratum_weight,
+         na.rm = TRUE
+       ),
+       
+       .groups = "drop"
+     ) %>%
+     dplyr::mutate(
+       # P-values should not be averaged across strata
+       k_tau_keep_p = NA_real_,
+       k_tau_catch_p = NA_real_
+     )
+   
+   if (!is.null(domain_label)) {
+     out <- out %>%
+       dplyr::mutate(
+         domain1 = domain_label
+       )
+   }
+   
+   out
+ }
+ 
  
  n_draws<-100 #number of simulated choice occasions per period
  n_catch_draws<-30 #number of catch draws per choice occasions
@@ -418,8 +1224,9 @@ saveRDS(p_star_values_all_y, file = paste0(input_data_cd, "p_star_values_2019_20
    
    source(paste0(input_code_cd,"projection function new2.R"))
    
-   write_xlsx(ktaus_all, paste0(output_data_cd,"ktau_output_y2019_outliers_newCV_2-17-26_draw", i, ".xlsx"))  #save the data
-   write_xlsx(sims_all, paste0(output_data_cd,"model_output_y2019_outliers_newCV_2-17-26_draw", i, ".xlsx"))  #save the data
+   write_xlsx(ktaus_all, paste0(output_data_cd,"ktau_output_y2019_outliers_newCV_7-13-26_draw", i, ".xlsx"))  #save the data
+   write_xlsx(ktaus_strata_all, paste0(output_data_cd,"ktau_output_strata_y2019_outliers_newCV_7-13-26_draw", i, ".xlsx"))  #save the data
+   write_xlsx(sims_all, paste0(output_data_cd,"model_output_y2019_outliers_newCV_7-13-26_draw", i, ".xlsx"))  #save the data
    
  }
  
@@ -428,101 +1235,101 @@ saveRDS(p_star_values_all_y, file = paste0(input_data_cd, "p_star_values_2019_20
  proc.time() - ptm # about 12 minutes per draw
 
 # Load and process projected bottom temp data
-bt_temp_project <- read_csv(file.path(input_data_cd, "decadal_bottom_temp_distributions_levels_3_12_2025.csv"), show_col_types = FALSE) %>%
-  mutate(
-    lower = average_temp - 1.96 * sd_temp,
-    upper = average_temp + 1.96 * sd_temp
-  ) %>%
-  group_by(decade) %>%
-  mutate(mean_decadal_tmp = mean(average_temp)) %>%
-  rename(decade2 = decade) %>%
-  dplyr::mutate(decade = case_when(
-    decade2 == 1 ~ "2021-2030",
-    decade2 == 2 ~ "2031-2040",
-    decade2 == 3 ~ "2041-2050",
-    decade2 == 4 ~ "2051-2060",
-    decade2 == 5 ~ "2061-2070",
-    decade2 == 6 ~ "2071-2080",
-    decade2 == 7 ~ "2081-2090",
-    decade2 == 8 ~ "2091-3000"
-  )) %>%
-  ungroup() %>%
-  select(-decade2) %>%
-  dplyr::rename(mean_temp = average_temp) %>%
-  mutate(month = as.numeric(month))
+# bt_temp_project <- read_csv(file.path(input_data_cd, "decadal_bottom_temp_distributions_levels_3_12_2025.csv"), show_col_types = FALSE) %>%
+#   mutate(
+#     lower = average_temp - 1.96 * sd_temp,
+#     upper = average_temp + 1.96 * sd_temp
+#   ) %>%
+#   group_by(decade) %>%
+#   mutate(mean_decadal_tmp = mean(average_temp)) %>%
+#   rename(decade2 = decade) %>%
+#   dplyr::mutate(decade = case_when(
+#     decade2 == 1 ~ "2021-2030",
+#     decade2 == 2 ~ "2031-2040",
+#     decade2 == 3 ~ "2041-2050",
+#     decade2 == 4 ~ "2051-2060",
+#     decade2 == 5 ~ "2061-2070",
+#     decade2 == 6 ~ "2071-2080",
+#     decade2 == 7 ~ "2081-2090",
+#     decade2 == 8 ~ "2091-3000"
+#   )) %>%
+#   ungroup() %>%
+#   select(-decade2) %>%
+#   dplyr::rename(mean_temp = average_temp) %>%
+#   mutate(month = as.numeric(month))
 
 # Load and process historical bottom temp data
 # By decade
-bt_temp_historical <- read_excel(file.path(input_data_cd, "hist_daily_bt_tmps_agg_GoM.xlsx")) %>%
-  mutate(
-    date = as.Date(date),
-    year = as.numeric(format(date, "%Y")),
-    month = as.numeric(format(date, "%m"))
-  ) %>%
-  group_by(year, month) %>%
-  summarise(mean_tmp_ym = mean(mean_tmp), .groups = "drop") %>%
-  mutate(decade = case_when(
-    year >= 1961 & year <= 1970 ~ "1961-1970",
-    year >= 1971 & year <= 1980 ~ "1971-1980",
-    year >= 1981 & year <= 1990 ~ "1981-1990",
-    year >= 1991 & year <= 2000 ~ "1991-2000",
-    year >= 2001 & year <= 2010 ~ "2001-2010",
-    year >= 2011 & year <= 2020 ~ "2011-2020"
-  )) %>%
-  filter(!is.na(decade)) %>%
-  group_by(decade, month) %>%
-  mutate(
-    mean_temp = mean(mean_tmp_ym),
-    sd_temp = sd(mean_tmp_ym),
-    lower = mean_temp - 1.96 * sd_temp,
-    upper = mean_temp + 1.96 * sd_temp
-  ) %>%
-  ungroup() %>%
-  group_by(decade) %>%
-  mutate(mean_decadal_tmp = mean(mean_temp)) %>%
-  ungroup()
-
-historical_and_projections <- bind_rows(bt_temp_historical, bt_temp_project)
-write_xlsx(historical_and_projections, paste0(output_data_cd,"bottom_temp_reformat1.xlsx"))  #save the data
-
-# By year
-# Load and process historical data
-bt_temp_historical_annual <- read_excel(file.path(input_data_cd, "hist_daily_bt_tmps_agg_GoM.xlsx")) %>%
-  mutate(
-    date = as.Date(date),
-    year = as.numeric(format(date, "%Y")),
-    month = as.numeric(format(date, "%m"))
-  ) %>%
-  group_by(year, month) %>%
-  summarise(mean_tmp_ym = mean(mean_tmp), .groups = "drop") %>%
-  dplyr::mutate(decade = case_when(
-    year == 2011  ~ "2011",
-    year == 2012  ~ "2012",
-    year == 2013  ~ "2013",
-    year == 2014  ~ "2014",
-    year == 2015  ~ "2015",
-    year == 2016  ~ "2016",
-    year == 2017  ~ "2017",
-    year == 2018  ~ "2018",
-    year == 2019  ~ "2019",
-    year == 2020  ~ "2020",
-    year == 2021  ~ "2021",
-    year == 2022  ~ "2022")) %>%
-  filter(!is.na(decade)) %>%
-  group_by(decade, month) %>%
-  mutate(
-    mean_temp = mean(mean_tmp_ym),
-    sd_temp = sd(mean_tmp_ym),
-    lower = mean_temp - 1.96 * sd_temp,
-    upper = mean_temp + 1.96 * sd_temp
-  ) %>%
-  ungroup() %>%
-  group_by(decade) %>%
-  mutate(mean_decadal_tmp = mean(mean_temp)) %>%
-  ungroup()
-
-historical_and_projections_annual <- bind_rows(bt_temp_historical_annual, bt_temp_project)
-write_xlsx(historical_and_projections_annual, paste0(output_data_cd,"bottom_temp_reformat2.xlsx"))  #save the data
+# bt_temp_historical <- read_excel(file.path(input_data_cd, "hist_daily_bt_tmps_agg_GoM.xlsx")) %>%
+#   mutate(
+#     date = as.Date(date),
+#     year = as.numeric(format(date, "%Y")),
+#     month = as.numeric(format(date, "%m"))
+#   ) %>%
+#   group_by(year, month) %>%
+#   summarise(mean_tmp_ym = mean(mean_tmp), .groups = "drop") %>%
+#   mutate(decade = case_when(
+#     year >= 1961 & year <= 1970 ~ "1961-1970",
+#     year >= 1971 & year <= 1980 ~ "1971-1980",
+#     year >= 1981 & year <= 1990 ~ "1981-1990",
+#     year >= 1991 & year <= 2000 ~ "1991-2000",
+#     year >= 2001 & year <= 2010 ~ "2001-2010",
+#     year >= 2011 & year <= 2020 ~ "2011-2020"
+#   )) %>%
+#   filter(!is.na(decade)) %>%
+#   group_by(decade, month) %>%
+#   mutate(
+#     mean_temp = mean(mean_tmp_ym),
+#     sd_temp = sd(mean_tmp_ym),
+#     lower = mean_temp - 1.96 * sd_temp,
+#     upper = mean_temp + 1.96 * sd_temp
+#   ) %>%
+#   ungroup() %>%
+#   group_by(decade) %>%
+#   mutate(mean_decadal_tmp = mean(mean_temp)) %>%
+#   ungroup()
+# 
+# historical_and_projections <- bind_rows(bt_temp_historical, bt_temp_project)
+# write_xlsx(historical_and_projections, paste0(output_data_cd,"bottom_temp_reformat1.xlsx"))  #save the data
+# 
+# # By year
+# # Load and process historical data
+# bt_temp_historical_annual <- read_excel(file.path(input_data_cd, "hist_daily_bt_tmps_agg_GoM.xlsx")) %>%
+#   mutate(
+#     date = as.Date(date),
+#     year = as.numeric(format(date, "%Y")),
+#     month = as.numeric(format(date, "%m"))
+#   ) %>%
+#   group_by(year, month) %>%
+#   summarise(mean_tmp_ym = mean(mean_tmp), .groups = "drop") %>%
+#   dplyr::mutate(decade = case_when(
+#     year == 2011  ~ "2011",
+#     year == 2012  ~ "2012",
+#     year == 2013  ~ "2013",
+#     year == 2014  ~ "2014",
+#     year == 2015  ~ "2015",
+#     year == 2016  ~ "2016",
+#     year == 2017  ~ "2017",
+#     year == 2018  ~ "2018",
+#     year == 2019  ~ "2019",
+#     year == 2020  ~ "2020",
+#     year == 2021  ~ "2021",
+#     year == 2022  ~ "2022")) %>%
+#   filter(!is.na(decade)) %>%
+#   group_by(decade, month) %>%
+#   mutate(
+#     mean_temp = mean(mean_tmp_ym),
+#     sd_temp = sd(mean_tmp_ym),
+#     lower = mean_temp - 1.96 * sd_temp,
+#     upper = mean_temp + 1.96 * sd_temp
+#   ) %>%
+#   ungroup() %>%
+#   group_by(decade) %>%
+#   mutate(mean_decadal_tmp = mean(mean_temp)) %>%
+#   ungroup()
+# 
+# historical_and_projections_annual <- bind_rows(bt_temp_historical_annual, bt_temp_project)
+# write_xlsx(historical_and_projections_annual, paste0(output_data_cd,"bottom_temp_reformat2.xlsx"))  #save the data
 
 
 # Process the input catch-per-trip data
@@ -604,166 +1411,166 @@ write_xlsx(historical_and_projections_annual, paste0(output_data_cd,"bottom_temp
 
 
 ###### PART B ##########
-rm(list = ls())
-input_data_cd <- "E:/Lou_projects/welfare-model-GoM/input_data/"
-input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/code/"
-output_data_cd<- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/"
-
-n_draws<-100 #number of simulated choice occasions per period
-n_catch_draws<-30 #number of catch draws per choice occasions
-
-library(plyr)
-library(dplyr)
-
-conflicts_prefer(here::here)
-conflicts_prefer(dplyr::filter)
-conflicts_prefer(dplyr::select)
-conflicts_prefer(dplyr::mutate)
-conflicts_prefer(dplyr::rename)
-conflicts_prefer(dplyr::summarize)
-conflicts_prefer(dplyr::summarise)
-conflicts_prefer(dplyr::count)
-options(scipen = 999)
-
-##### B1) Calibration
-
-p_star_values_i<-list()
-p_star_values_i_y<-list()
-
-yrz<- c(2019, 2020, 2021)
-for (y in yrz){
-
-  for (i in 1:100){
-
-    seed<-i
-
-    # Pull in calibration-year catch draws
-    catch_data_all_split <- readr::read_csv(
-      paste0(input_data_cd,  "calib_catch_yr", y, "_draw", i, ".csv"), show_col_types = FALSE) %>%
-      dplyr::mutate(
-        omit = dplyr::if_else(
-          state == 23 & year == 2019 & month %in% c(5, 6), 1,0)) %>%
-      dplyr::mutate(
-        omit = dplyr::if_else(
-          state == 23 & year == 2019 & month %in% c(9,10), 1,omit)) %>%
-      dplyr::mutate(
-        omit = dplyr::if_else(
-          state == 23 & year == 2020 & month %in% c(5,6), 1,omit)) %>%
-      dplyr::mutate(
-        omit = dplyr::if_else(state == 23 & year == 2020 & month %in% c(9,10), 1,omit)) %>%
-      dplyr::mutate(
-        omit = dplyr::if_else(
-          state == 25 & year == 2020 & month %in% c(11,12), 1,omit)) %>%
-      dplyr::mutate(
-        omit = dplyr::if_else(
-          state == 23 & year == 2021 & month %in% c(9,10), 1,omit)) %>%
-      dplyr::filter(omit != 1) %>%
-      filter(tripid<=100)
-
-     catch_data_all_split <- catch_data_all_split %>%
-      dplyr::group_by(state, mode, area, month) %>%
-      dplyr::mutate(
-        tot_cat_cod_shuffled  = sample(tot_cat_cod),
-        tot_cat_hadd_shuffled = sample(tot_cat_hadd)
-      ) %>%
-      ungroup()
-
-    # # Compute and display per-group correlation before and after shuffling
-    # cor_by_group <- catch_data_all_split %>%
-    #   group_by(state, mode, area, month) %>%
-    #   slice_sample(n=1000) %>%
-    #   summarise(
-    #     #cor_before = cor(tot_cat_cod, tot_cat_hadd, use = "complete.obs"),
-    #     #cor_after  = cor(tot_cat_cod_shuffled, tot_cat_hadd, use = "complete.obs"),
-    #     cor_before = cor.test(tot_cat_cod, tot_cat_hadd, method = c("kendall"))[["estimate"]],
-    #     cor_after  = cor.test(tot_cat_cod_shuffled, tot_cat_hadd, method = c("kendall"))[["estimate"]],
-    #     n = n()
-    #   ) %>%
-    #   ungroup()
-    #
-    # ggplot(cor_by_group, aes(x = cor_before, y = cor_after)) +
-    #   geom_point(alpha = 0.6) +
-    #   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
-    #   coord_fixed(xlim = c(-1, 1), ylim = c(-1, 1)) +
-    #   labs(x = "Before shuffling", y = "After shuffling",
-    #        title = "Per-Group Correlation: tot_cat_cod vs tot_cat_hadd")
-     
-
-    # Shuffle catch per-trip data to remove inter-species correlation
-    catch_data_all_split <- catch_data_all_split %>%
-      dplyr::mutate(
-        tot_cat_cod  = tot_cat_cod_shuffled,
-        tot_cat_hadd = tot_cat_hadd_shuffled) %>%
-      dplyr::select(-tot_cat_cod_shuffled, -tot_cat_hadd_shuffled)
-
-    # Directed trips and regulations by period
-    # code for assigning zero to uncetrain MRIP estimates
-    directed_trips <- readr::read_csv(
-      paste0(input_data_cd, "directed trips and regulations 2010_2020_disaggregated.csv"),
-      show_col_types = FALSE)   %>%
-      dplyr::mutate(dtrip = round(dtrip)) %>%
-      dplyr::mutate(
-        dtrip = dplyr::if_else( st == 23 & year == 2019 & month %in% c(5, 6), 0,dtrip))%>%
-      dplyr::mutate(
-        dtrip = dplyr::if_else(st == 23 & year == 2019 & month %in% c(9,10), 0,dtrip)) %>%
-      dplyr::mutate(
-        dtrip = dplyr::if_else( st == 23 & year == 2020 & month %in% c(5,6),0,dtrip )) %>%
-      dplyr::mutate(
-        dtrip = dplyr::if_else(st == 23 & year == 2020 & month %in% c(9,10),0,dtrip)) %>%
-      dplyr::mutate(
-        dtrip = dplyr::if_else( st == 25 & year == 2020 & month %in% c(11,12),0,dtrip)) %>%
-      dplyr::mutate(
-        dtrip = dplyr::if_else( st == 23 & year == 2021 & month %in% c(9,10), 0,dtrip)) %>%
-      dplyr::filter(dtrip != 0) %>%
-      dplyr::filter(year == y) %>%
-      dplyr::select(-year)
-
-    directed_trips_p <- directed_trips %>%
-      mutate(period2 = as.character(period2)) %>% mutate(n_trips = floor(dtrip), n_draws = n_draws)
-
-    regs <- directed_trips_p %>% dplyr::select(period2, cod_bag, cod_min, hadd_bag, hadd_min, dtrip)
-
-    #number of periods
-    n_periods<-length(unique(regs$period2))
-
-    regs_check <- directed_trips_p %>%   dplyr::select(period2, dtrip)
-
-    MRIP_data <- catch_data_all_split %>%
-      dplyr::group_by(period2) %>%
-      dplyr::summarise(mean_cod_keep = mean(landing_cod),
-                       mean_hadd_keep = mean(landing_hadd),
-                       mean_hadd_cat = mean(tot_cat_hadd),
-                       mean_cod_cat = mean(tot_cat_cod),.groups="drop") %>%
-      dplyr::ungroup() %>%
-      dplyr::left_join(regs_check, by="period2") %>%
-      mutate(cod_harvest=mean_cod_keep*dtrip,
-             hadd_harvest=mean_hadd_keep*dtrip,
-             cod_tot_cat=mean_cod_cat*dtrip,
-             hadd_tot_cat=mean_hadd_cat*dtrip) %>%
-      dplyr::summarise(cod_harvest = sum(cod_harvest),
-                       hadd_harvest = sum(hadd_harvest),
-                       cod_tot_cat = sum(cod_tot_cat),
-                       hadd_tot_cat = sum(hadd_tot_cat),.groups="drop")
-
-    # Run the p-star routine and save the output
-    source(paste0(input_code_cd,"find p-star values 2010-2020_ind.R")) # this calls "calibration loop2 2010-2020.R"
-
-    p_starz<-cbind(p_star_cod_variable, p_star_hadd_variable, cod_harvest_perc_diff, cod_harvest_diff, hadd_harvest_perc_diff, hadd_harvest_diff)
-
-    p_starz<-p_starz %>% as.data.frame() %>% dplyr::mutate(draw=i, year=y)
-
-    p_star_values_i[[i]] <-p_starz
-
-
- }
-  p_star_values_all= rlist::list.stack(p_star_values_i, fill=TRUE)
-  p_star_values_i_y[[y]]= p_star_values_all
-
-}
-p_star_values_all_y= rlist::list.stack(p_star_values_i_y, fill=TRUE)
-
-#saveRDS(p_star_values_all_y, file = paste0(input_data_cd, "p_star_values_2019_2021_ind_outliers.rds"))
-saveRDS(p_star_values_all_y, file = paste0(input_data_cd, "p_star_values_2019_2021_ind_outliers_newCV.rds"))
+# rm(list = ls())
+# input_data_cd <- "E:/Lou_projects/welfare-model-GoM/input_data/"
+# input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/code/"
+# output_data_cd<- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/"
+# 
+# n_draws<-100 #number of simulated choice occasions per period
+# n_catch_draws<-30 #number of catch draws per choice occasions
+# 
+# library(plyr)
+# library(dplyr)
+# 
+# conflicts_prefer(here::here)
+# conflicts_prefer(dplyr::filter)
+# conflicts_prefer(dplyr::select)
+# conflicts_prefer(dplyr::mutate)
+# conflicts_prefer(dplyr::rename)
+# conflicts_prefer(dplyr::summarize)
+# conflicts_prefer(dplyr::summarise)
+# conflicts_prefer(dplyr::count)
+# options(scipen = 999)
+# 
+# ##### B1) Calibration
+# 
+# p_star_values_i<-list()
+# p_star_values_i_y<-list()
+# 
+# yrz<- c(2019, 2020, 2021)
+# for (y in yrz){
+# 
+#   for (i in 1:100){
+# 
+#     seed<-i
+# 
+#     # Pull in calibration-year catch draws
+#     catch_data_all_split <- readr::read_csv(
+#       paste0(input_data_cd,  "calib_catch_yr", y, "_draw", i, ".csv"), show_col_types = FALSE) %>%
+#       dplyr::mutate(
+#         omit = dplyr::if_else(
+#           state == 23 & year == 2019 & month %in% c(5, 6), 1,0)) %>%
+#       dplyr::mutate(
+#         omit = dplyr::if_else(
+#           state == 23 & year == 2019 & month %in% c(9,10), 1,omit)) %>%
+#       dplyr::mutate(
+#         omit = dplyr::if_else(
+#           state == 23 & year == 2020 & month %in% c(5,6), 1,omit)) %>%
+#       dplyr::mutate(
+#         omit = dplyr::if_else(state == 23 & year == 2020 & month %in% c(9,10), 1,omit)) %>%
+#       dplyr::mutate(
+#         omit = dplyr::if_else(
+#           state == 25 & year == 2020 & month %in% c(11,12), 1,omit)) %>%
+#       dplyr::mutate(
+#         omit = dplyr::if_else(
+#           state == 23 & year == 2021 & month %in% c(9,10), 1,omit)) %>%
+#       dplyr::filter(omit != 1) %>%
+#       filter(tripid<=100)
+# 
+#      catch_data_all_split <- catch_data_all_split %>%
+#       dplyr::group_by(state, mode, area, month) %>%
+#       dplyr::mutate(
+#         tot_cat_cod_shuffled  = sample(tot_cat_cod),
+#         tot_cat_hadd_shuffled = sample(tot_cat_hadd)
+#       ) %>%
+#       ungroup()
+# 
+#     # # Compute and display per-group correlation before and after shuffling
+#     # cor_by_group <- catch_data_all_split %>%
+#     #   group_by(state, mode, area, month) %>%
+#     #   slice_sample(n=1000) %>%
+#     #   summarise(
+#     #     #cor_before = cor(tot_cat_cod, tot_cat_hadd, use = "complete.obs"),
+#     #     #cor_after  = cor(tot_cat_cod_shuffled, tot_cat_hadd, use = "complete.obs"),
+#     #     cor_before = cor.test(tot_cat_cod, tot_cat_hadd, method = c("kendall"))[["estimate"]],
+#     #     cor_after  = cor.test(tot_cat_cod_shuffled, tot_cat_hadd, method = c("kendall"))[["estimate"]],
+#     #     n = n()
+#     #   ) %>%
+#     #   ungroup()
+#     #
+#     # ggplot(cor_by_group, aes(x = cor_before, y = cor_after)) +
+#     #   geom_point(alpha = 0.6) +
+#     #   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+#     #   coord_fixed(xlim = c(-1, 1), ylim = c(-1, 1)) +
+#     #   labs(x = "Before shuffling", y = "After shuffling",
+#     #        title = "Per-Group Correlation: tot_cat_cod vs tot_cat_hadd")
+#      
+# 
+#     # Shuffle catch per-trip data to remove inter-species correlation
+#     catch_data_all_split <- catch_data_all_split %>%
+#       dplyr::mutate(
+#         tot_cat_cod  = tot_cat_cod_shuffled,
+#         tot_cat_hadd = tot_cat_hadd_shuffled) %>%
+#       dplyr::select(-tot_cat_cod_shuffled, -tot_cat_hadd_shuffled)
+# 
+#     # Directed trips and regulations by period
+#     # code for assigning zero to uncetrain MRIP estimates
+#     directed_trips <- readr::read_csv(
+#       paste0(input_data_cd, "directed trips and regulations 2010_2020_disaggregated.csv"),
+#       show_col_types = FALSE)   %>%
+#       dplyr::mutate(dtrip = round(dtrip)) %>%
+#       dplyr::mutate(
+#         dtrip = dplyr::if_else( st == 23 & year == 2019 & month %in% c(5, 6), 0,dtrip))%>%
+#       dplyr::mutate(
+#         dtrip = dplyr::if_else(st == 23 & year == 2019 & month %in% c(9,10), 0,dtrip)) %>%
+#       dplyr::mutate(
+#         dtrip = dplyr::if_else( st == 23 & year == 2020 & month %in% c(5,6),0,dtrip )) %>%
+#       dplyr::mutate(
+#         dtrip = dplyr::if_else(st == 23 & year == 2020 & month %in% c(9,10),0,dtrip)) %>%
+#       dplyr::mutate(
+#         dtrip = dplyr::if_else( st == 25 & year == 2020 & month %in% c(11,12),0,dtrip)) %>%
+#       dplyr::mutate(
+#         dtrip = dplyr::if_else( st == 23 & year == 2021 & month %in% c(9,10), 0,dtrip)) %>%
+#       dplyr::filter(dtrip != 0) %>%
+#       dplyr::filter(year == y) %>%
+#       dplyr::select(-year)
+# 
+#     directed_trips_p <- directed_trips %>%
+#       mutate(period2 = as.character(period2)) %>% mutate(n_trips = floor(dtrip), n_draws = n_draws)
+# 
+#     regs <- directed_trips_p %>% dplyr::select(period2, cod_bag, cod_min, hadd_bag, hadd_min, dtrip)
+# 
+#     #number of periods
+#     n_periods<-length(unique(regs$period2))
+# 
+#     regs_check <- directed_trips_p %>%   dplyr::select(period2, dtrip)
+# 
+#     MRIP_data <- catch_data_all_split %>%
+#       dplyr::group_by(period2) %>%
+#       dplyr::summarise(mean_cod_keep = mean(landing_cod),
+#                        mean_hadd_keep = mean(landing_hadd),
+#                        mean_hadd_cat = mean(tot_cat_hadd),
+#                        mean_cod_cat = mean(tot_cat_cod),.groups="drop") %>%
+#       dplyr::ungroup() %>%
+#       dplyr::left_join(regs_check, by="period2") %>%
+#       mutate(cod_harvest=mean_cod_keep*dtrip,
+#              hadd_harvest=mean_hadd_keep*dtrip,
+#              cod_tot_cat=mean_cod_cat*dtrip,
+#              hadd_tot_cat=mean_hadd_cat*dtrip) %>%
+#       dplyr::summarise(cod_harvest = sum(cod_harvest),
+#                        hadd_harvest = sum(hadd_harvest),
+#                        cod_tot_cat = sum(cod_tot_cat),
+#                        hadd_tot_cat = sum(hadd_tot_cat),.groups="drop")
+# 
+#     # Run the p-star routine and save the output
+#     source(paste0(input_code_cd,"find p-star values 2010-2020_ind.R")) # this calls "calibration loop2 2010-2020.R"
+# 
+#     p_starz<-cbind(p_star_cod_variable, p_star_hadd_variable, cod_harvest_perc_diff, cod_harvest_diff, hadd_harvest_perc_diff, hadd_harvest_diff)
+# 
+#     p_starz<-p_starz %>% as.data.frame() %>% dplyr::mutate(draw=i, year=y)
+# 
+#     p_star_values_i[[i]] <-p_starz
+# 
+# 
+#  }
+#   p_star_values_all= rlist::list.stack(p_star_values_i, fill=TRUE)
+#   p_star_values_i_y[[y]]= p_star_values_all
+# 
+# }
+# p_star_values_all_y= rlist::list.stack(p_star_values_i_y, fill=TRUE)
+# 
+# #saveRDS(p_star_values_all_y, file = paste0(input_data_cd, "p_star_values_2019_2021_ind_outliers.rds"))
+# saveRDS(p_star_values_all_y, file = paste0(input_data_cd, "p_star_values_2019_2021_ind_outliers_newCV.rds"))
 
 
 #####################
@@ -786,8 +1593,276 @@ conflicts_prefer(dplyr::summarise)
 conflicts_prefer(dplyr::count)
 
 input_data_cd <- "E:/Lou_projects/welfare-model-GoM/input_data/"
-input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/code/"
+input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/Climate-and-Catch-Dependence-in-Rec.-Fisheries/code/fishery simulation/"
 output_data_cd<- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/"
+
+
+## Helpers 
+
+# Return Kendall's tau only when both variables contain variation.
+# A constant variable makes Kendall's tau undefined, not zero.
+safe_kendall_tau <- function(x, y) {
+  
+  ok <- stats::complete.cases(x, y)
+  x <- x[ok]
+  y <- y[ok]
+  
+  n_complete <- length(x)
+  
+  if (
+    n_complete < 2L ||
+    dplyr::n_distinct(x) < 2L ||
+    dplyr::n_distinct(y) < 2L
+  ) {
+    return(
+      tibble::tibble(
+        tau = NA_real_,
+        p_value = NA_real_,
+        n_complete = n_complete,
+        valid_tau = FALSE
+      )
+    )
+  }
+  
+  test <- suppressWarnings(
+    stats::cor.test(
+      x,
+      y,
+      method = "kendall",
+      exact = FALSE
+    )
+  )
+  
+  tibble::tibble(
+    tau = unname(test$estimate),
+    p_value = test$p.value,
+    n_complete = n_complete,
+    valid_tau = TRUE
+  )
+}
+
+
+# Compute keep and total-catch tau within one state-mode-area-month stratum.
+compute_stratum_tau <- function(data) {
+  
+  keep_tau <- safe_kendall_tau(
+    data$tot_keep_cod_new,
+    data$tot_keep_hadd_new
+  )
+  
+  catch_tau <- safe_kendall_tau(
+    data$tot_cat_cod_new,
+    data$tot_cat_hadd_new
+  )
+  
+  tibble::tibble(
+    k_tau_keep_est = keep_tau$tau,
+    k_tau_keep_p = keep_tau$p_value,
+    n_keep_complete = keep_tau$n_complete,
+    valid_keep_tau = keep_tau$valid_tau,
+    
+    k_tau_catch_est = catch_tau$tau,
+    k_tau_catch_p = catch_tau$p_value,
+    n_catch_complete = catch_tau$n_complete,
+    valid_catch_tau = catch_tau$valid_tau,
+    
+    med_cod = stats::median(
+      data$tot_cat_cod_new,
+      na.rm = TRUE
+    ),
+    
+    med_hadd = stats::median(
+      data$tot_cat_hadd_new,
+      na.rm = TRUE
+    )
+  )
+}
+
+
+# Average stratum-level tau estimates.
+#
+# The weighted mean uses projected trips in each stratum.
+# The unweighted mean is retained as a diagnostic.
+#
+# P-values are not averaged because an average p-value has no useful
+# inferential interpretation.
+aggregate_stratum_tau <- function(
+    data,
+    reporting_vars,
+    domain_label = NULL
+) {
+  
+  reporting_vars <- rlang::syms(reporting_vars)
+  
+  # Rename input columns so their names cannot be overwritten sequentially
+  # inside dplyr::summarise().
+  data_for_summary <- data %>%
+    dplyr::mutate(
+      tau_keep_stratum = k_tau_keep_est,
+      tau_catch_stratum = k_tau_catch_est,
+      med_cod_stratum = med_cod,
+      med_hadd_stratum = med_hadd,
+      stratum_weight = ntrips_alt,
+      
+      valid_keep_weighted =
+        !is.na(tau_keep_stratum) &
+        !is.na(stratum_weight) &
+        stratum_weight > 0,
+      
+      valid_catch_weighted =
+        !is.na(tau_catch_stratum) &
+        !is.na(stratum_weight) &
+        stratum_weight > 0
+    )
+  
+  out <- data_for_summary %>%
+    dplyr::group_by(!!!reporting_vars) %>%
+    dplyr::summarise(
+      
+      # Projected-trip-weighted average across valid strata
+      k_tau_keep_est = {
+        use <- valid_keep_weighted
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = tau_keep_stratum[use],
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      k_tau_catch_est = {
+        use <- valid_catch_weighted
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = tau_catch_stratum[use],
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      # Equal-weight average across strata with defined tau
+      k_tau_keep_unweighted = {
+        use <- !is.na(tau_keep_stratum)
+        
+        if (any(use)) {
+          mean(tau_keep_stratum[use])
+        } else {
+          NA_real_
+        }
+      },
+      
+      k_tau_catch_unweighted = {
+        use <- !is.na(tau_catch_stratum)
+        
+        if (any(use)) {
+          mean(tau_catch_stratum[use])
+        } else {
+          NA_real_
+        }
+      },
+      
+      # Sensitivity result: treat undefined tau as zero
+      k_tau_keep_zero_filled = {
+        use <- !is.na(stratum_weight) & stratum_weight > 0
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = tidyr::replace_na(
+              tau_keep_stratum[use],
+              0
+            ),
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      k_tau_catch_zero_filled = {
+        use <- !is.na(stratum_weight) & stratum_weight > 0
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = tidyr::replace_na(
+              tau_catch_stratum[use],
+              0
+            ),
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      med_cod = {
+        use <- !is.na(med_cod_stratum) &
+          !is.na(stratum_weight) &
+          stratum_weight > 0
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = med_cod_stratum[use],
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      med_hadd = {
+        use <- !is.na(med_hadd_stratum) &
+          !is.na(stratum_weight) &
+          stratum_weight > 0
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = med_hadd_stratum[use],
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      n_strata = dplyr::n(),
+      
+      n_valid_keep_strata = sum(
+        !is.na(tau_keep_stratum)
+      ),
+      
+      n_valid_catch_strata = sum(
+        !is.na(tau_catch_stratum)
+      ),
+      
+      projected_trips = sum(
+        stratum_weight,
+        na.rm = TRUE
+      ),
+      
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(
+      # P-values should not be averaged across strata
+      k_tau_keep_p = NA_real_,
+      k_tau_catch_p = NA_real_
+    )
+  
+  if (!is.null(domain_label)) {
+    out <- out %>%
+      dplyr::mutate(
+        domain1 = domain_label
+      )
+  }
+  
+  out
+}
+
 
 y<-2021
 
@@ -845,8 +1920,9 @@ for (i in 1:100){
   
   source(paste0(input_code_cd,"projection function new2_ind.R"))
   
-  write_xlsx(ktaus_all, paste0(output_data_cd,"ktau_output_y2021_outliers_newCV_2-17-26_draw", i, "_ind.xlsx"))  #save the data
-  write_xlsx(sims_all, paste0(output_data_cd,"model_output_y2021_outliers_newCV_2-17-26_draw", i, "_ind.xlsx"))  #save the data
+  write_xlsx(ktaus_all, paste0(output_data_cd,"ktau_output_y2021_outliers_newCV_7-13-26_draw", i, "_ind.xlsx"))  #save the data
+  write_xlsx(ktaus_strata_all, paste0(output_data_cd,"ktau_output_strata_y2021_outliers_newCV_7-13-26_draw", i, "_ind.xlsx"))  #save the data
+  write_xlsx(sims_all, paste0(output_data_cd,"model_output_y2021_outliers_newCV_7-13-26_draw", i, "_ind.xlsx"))  #save the data
   
 }
 
@@ -870,8 +1946,276 @@ conflicts_prefer(dplyr::summarise)
 conflicts_prefer(dplyr::count)
 
 input_data_cd <- "E:/Lou_projects/welfare-model-GoM/input_data/"
-input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/code/"
+input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/Climate-and-Catch-Dependence-in-Rec.-Fisheries/code/fishery simulation/"
 output_data_cd<- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/"
+
+
+## Helpers 
+
+# Return Kendall's tau only when both variables contain variation.
+# A constant variable makes Kendall's tau undefined, not zero.
+safe_kendall_tau <- function(x, y) {
+  
+  ok <- stats::complete.cases(x, y)
+  x <- x[ok]
+  y <- y[ok]
+  
+  n_complete <- length(x)
+  
+  if (
+    n_complete < 2L ||
+    dplyr::n_distinct(x) < 2L ||
+    dplyr::n_distinct(y) < 2L
+  ) {
+    return(
+      tibble::tibble(
+        tau = NA_real_,
+        p_value = NA_real_,
+        n_complete = n_complete,
+        valid_tau = FALSE
+      )
+    )
+  }
+  
+  test <- suppressWarnings(
+    stats::cor.test(
+      x,
+      y,
+      method = "kendall",
+      exact = FALSE
+    )
+  )
+  
+  tibble::tibble(
+    tau = unname(test$estimate),
+    p_value = test$p.value,
+    n_complete = n_complete,
+    valid_tau = TRUE
+  )
+}
+
+
+# Compute keep and total-catch tau within one state-mode-area-month stratum.
+compute_stratum_tau <- function(data) {
+  
+  keep_tau <- safe_kendall_tau(
+    data$tot_keep_cod_new,
+    data$tot_keep_hadd_new
+  )
+  
+  catch_tau <- safe_kendall_tau(
+    data$tot_cat_cod_new,
+    data$tot_cat_hadd_new
+  )
+  
+  tibble::tibble(
+    k_tau_keep_est = keep_tau$tau,
+    k_tau_keep_p = keep_tau$p_value,
+    n_keep_complete = keep_tau$n_complete,
+    valid_keep_tau = keep_tau$valid_tau,
+    
+    k_tau_catch_est = catch_tau$tau,
+    k_tau_catch_p = catch_tau$p_value,
+    n_catch_complete = catch_tau$n_complete,
+    valid_catch_tau = catch_tau$valid_tau,
+    
+    med_cod = stats::median(
+      data$tot_cat_cod_new,
+      na.rm = TRUE
+    ),
+    
+    med_hadd = stats::median(
+      data$tot_cat_hadd_new,
+      na.rm = TRUE
+    )
+  )
+}
+
+
+# Average stratum-level tau estimates.
+#
+# The weighted mean uses projected trips in each stratum.
+# The unweighted mean is retained as a diagnostic.
+#
+# P-values are not averaged because an average p-value has no useful
+# inferential interpretation.
+aggregate_stratum_tau <- function(
+    data,
+    reporting_vars,
+    domain_label = NULL
+) {
+  
+  reporting_vars <- rlang::syms(reporting_vars)
+  
+  # Rename input columns so their names cannot be overwritten sequentially
+  # inside dplyr::summarise().
+  data_for_summary <- data %>%
+    dplyr::mutate(
+      tau_keep_stratum = k_tau_keep_est,
+      tau_catch_stratum = k_tau_catch_est,
+      med_cod_stratum = med_cod,
+      med_hadd_stratum = med_hadd,
+      stratum_weight = ntrips_alt,
+      
+      valid_keep_weighted =
+        !is.na(tau_keep_stratum) &
+        !is.na(stratum_weight) &
+        stratum_weight > 0,
+      
+      valid_catch_weighted =
+        !is.na(tau_catch_stratum) &
+        !is.na(stratum_weight) &
+        stratum_weight > 0
+    )
+  
+  out <- data_for_summary %>%
+    dplyr::group_by(!!!reporting_vars) %>%
+    dplyr::summarise(
+      
+      # Projected-trip-weighted average across valid strata
+      k_tau_keep_est = {
+        use <- valid_keep_weighted
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = tau_keep_stratum[use],
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      k_tau_catch_est = {
+        use <- valid_catch_weighted
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = tau_catch_stratum[use],
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      # Equal-weight average across strata with defined tau
+      k_tau_keep_unweighted = {
+        use <- !is.na(tau_keep_stratum)
+        
+        if (any(use)) {
+          mean(tau_keep_stratum[use])
+        } else {
+          NA_real_
+        }
+      },
+      
+      k_tau_catch_unweighted = {
+        use <- !is.na(tau_catch_stratum)
+        
+        if (any(use)) {
+          mean(tau_catch_stratum[use])
+        } else {
+          NA_real_
+        }
+      },
+      
+      # Sensitivity result: treat undefined tau as zero
+      k_tau_keep_zero_filled = {
+        use <- !is.na(stratum_weight) & stratum_weight > 0
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = tidyr::replace_na(
+              tau_keep_stratum[use],
+              0
+            ),
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      k_tau_catch_zero_filled = {
+        use <- !is.na(stratum_weight) & stratum_weight > 0
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = tidyr::replace_na(
+              tau_catch_stratum[use],
+              0
+            ),
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      med_cod = {
+        use <- !is.na(med_cod_stratum) &
+          !is.na(stratum_weight) &
+          stratum_weight > 0
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = med_cod_stratum[use],
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      med_hadd = {
+        use <- !is.na(med_hadd_stratum) &
+          !is.na(stratum_weight) &
+          stratum_weight > 0
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = med_hadd_stratum[use],
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      n_strata = dplyr::n(),
+      
+      n_valid_keep_strata = sum(
+        !is.na(tau_keep_stratum)
+      ),
+      
+      n_valid_catch_strata = sum(
+        !is.na(tau_catch_stratum)
+      ),
+      
+      projected_trips = sum(
+        stratum_weight,
+        na.rm = TRUE
+      ),
+      
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(
+      # P-values should not be averaged across strata
+      k_tau_keep_p = NA_real_,
+      k_tau_catch_p = NA_real_
+    )
+  
+  if (!is.null(domain_label)) {
+    out <- out %>%
+      dplyr::mutate(
+        domain1 = domain_label
+      )
+  }
+  
+  out
+}
+
 
 y<-2020
 
@@ -929,8 +2273,9 @@ for (i in 1:100){
   
   source(paste0(input_code_cd,"projection function new2_ind.R"))
   
-  write_xlsx(ktaus_all, paste0(output_data_cd,"ktau_output_y2020_outliers_newCV_2-17-26_draw", i, "_ind.xlsx"))  #save the data
-  write_xlsx(sims_all, paste0(output_data_cd,"model_output_y2020_outliers_newCV_2-17-26_draw", i, "_ind.xlsx"))  #save the data
+  write_xlsx(ktaus_all, paste0(output_data_cd,"ktau_output_y2020_outliers_newCV_7-13-26_draw", i, "_ind.xlsx"))  #save the data
+  write_xlsx(ktaus_strata_all, paste0(output_data_cd,"ktau_output_strata_y2020_outliers_newCV_7-13-26_draw", i, "_ind.xlsx"))  #save the data
+  write_xlsx(sims_all, paste0(output_data_cd,"model_output_y2020_outliers_newCV_7-13-26_draw", i, "_ind.xlsx"))  #save the data
   
 }
 
@@ -954,8 +2299,276 @@ conflicts_prefer(dplyr::summarise)
 conflicts_prefer(dplyr::count)
 
 input_data_cd <- "E:/Lou_projects/welfare-model-GoM/input_data/"
-input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/code/"
+input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/Climate-and-Catch-Dependence-in-Rec.-Fisheries/code/fishery simulation/"
 output_data_cd<- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/"
+
+
+## Helpers 
+
+# Return Kendall's tau only when both variables contain variation.
+# A constant variable makes Kendall's tau undefined, not zero.
+safe_kendall_tau <- function(x, y) {
+  
+  ok <- stats::complete.cases(x, y)
+  x <- x[ok]
+  y <- y[ok]
+  
+  n_complete <- length(x)
+  
+  if (
+    n_complete < 2L ||
+    dplyr::n_distinct(x) < 2L ||
+    dplyr::n_distinct(y) < 2L
+  ) {
+    return(
+      tibble::tibble(
+        tau = NA_real_,
+        p_value = NA_real_,
+        n_complete = n_complete,
+        valid_tau = FALSE
+      )
+    )
+  }
+  
+  test <- suppressWarnings(
+    stats::cor.test(
+      x,
+      y,
+      method = "kendall",
+      exact = FALSE
+    )
+  )
+  
+  tibble::tibble(
+    tau = unname(test$estimate),
+    p_value = test$p.value,
+    n_complete = n_complete,
+    valid_tau = TRUE
+  )
+}
+
+
+# Compute keep and total-catch tau within one state-mode-area-month stratum.
+compute_stratum_tau <- function(data) {
+  
+  keep_tau <- safe_kendall_tau(
+    data$tot_keep_cod_new,
+    data$tot_keep_hadd_new
+  )
+  
+  catch_tau <- safe_kendall_tau(
+    data$tot_cat_cod_new,
+    data$tot_cat_hadd_new
+  )
+  
+  tibble::tibble(
+    k_tau_keep_est = keep_tau$tau,
+    k_tau_keep_p = keep_tau$p_value,
+    n_keep_complete = keep_tau$n_complete,
+    valid_keep_tau = keep_tau$valid_tau,
+    
+    k_tau_catch_est = catch_tau$tau,
+    k_tau_catch_p = catch_tau$p_value,
+    n_catch_complete = catch_tau$n_complete,
+    valid_catch_tau = catch_tau$valid_tau,
+    
+    med_cod = stats::median(
+      data$tot_cat_cod_new,
+      na.rm = TRUE
+    ),
+    
+    med_hadd = stats::median(
+      data$tot_cat_hadd_new,
+      na.rm = TRUE
+    )
+  )
+}
+
+
+# Average stratum-level tau estimates.
+#
+# The weighted mean uses projected trips in each stratum.
+# The unweighted mean is retained as a diagnostic.
+#
+# P-values are not averaged because an average p-value has no useful
+# inferential interpretation.
+aggregate_stratum_tau <- function(
+    data,
+    reporting_vars,
+    domain_label = NULL
+) {
+  
+  reporting_vars <- rlang::syms(reporting_vars)
+  
+  # Rename input columns so their names cannot be overwritten sequentially
+  # inside dplyr::summarise().
+  data_for_summary <- data %>%
+    dplyr::mutate(
+      tau_keep_stratum = k_tau_keep_est,
+      tau_catch_stratum = k_tau_catch_est,
+      med_cod_stratum = med_cod,
+      med_hadd_stratum = med_hadd,
+      stratum_weight = ntrips_alt,
+      
+      valid_keep_weighted =
+        !is.na(tau_keep_stratum) &
+        !is.na(stratum_weight) &
+        stratum_weight > 0,
+      
+      valid_catch_weighted =
+        !is.na(tau_catch_stratum) &
+        !is.na(stratum_weight) &
+        stratum_weight > 0
+    )
+  
+  out <- data_for_summary %>%
+    dplyr::group_by(!!!reporting_vars) %>%
+    dplyr::summarise(
+      
+      # Projected-trip-weighted average across valid strata
+      k_tau_keep_est = {
+        use <- valid_keep_weighted
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = tau_keep_stratum[use],
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      k_tau_catch_est = {
+        use <- valid_catch_weighted
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = tau_catch_stratum[use],
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      # Equal-weight average across strata with defined tau
+      k_tau_keep_unweighted = {
+        use <- !is.na(tau_keep_stratum)
+        
+        if (any(use)) {
+          mean(tau_keep_stratum[use])
+        } else {
+          NA_real_
+        }
+      },
+      
+      k_tau_catch_unweighted = {
+        use <- !is.na(tau_catch_stratum)
+        
+        if (any(use)) {
+          mean(tau_catch_stratum[use])
+        } else {
+          NA_real_
+        }
+      },
+      
+      # Sensitivity result: treat undefined tau as zero
+      k_tau_keep_zero_filled = {
+        use <- !is.na(stratum_weight) & stratum_weight > 0
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = tidyr::replace_na(
+              tau_keep_stratum[use],
+              0
+            ),
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      k_tau_catch_zero_filled = {
+        use <- !is.na(stratum_weight) & stratum_weight > 0
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = tidyr::replace_na(
+              tau_catch_stratum[use],
+              0
+            ),
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      med_cod = {
+        use <- !is.na(med_cod_stratum) &
+          !is.na(stratum_weight) &
+          stratum_weight > 0
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = med_cod_stratum[use],
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      med_hadd = {
+        use <- !is.na(med_hadd_stratum) &
+          !is.na(stratum_weight) &
+          stratum_weight > 0
+        
+        if (any(use)) {
+          stats::weighted.mean(
+            x = med_hadd_stratum[use],
+            w = stratum_weight[use]
+          )
+        } else {
+          NA_real_
+        }
+      },
+      
+      n_strata = dplyr::n(),
+      
+      n_valid_keep_strata = sum(
+        !is.na(tau_keep_stratum)
+      ),
+      
+      n_valid_catch_strata = sum(
+        !is.na(tau_catch_stratum)
+      ),
+      
+      projected_trips = sum(
+        stratum_weight,
+        na.rm = TRUE
+      ),
+      
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(
+      # P-values should not be averaged across strata
+      k_tau_keep_p = NA_real_,
+      k_tau_catch_p = NA_real_
+    )
+  
+  if (!is.null(domain_label)) {
+    out <- out %>%
+      dplyr::mutate(
+        domain1 = domain_label
+      )
+  }
+  
+  out
+}
+
 
 y<-2019
 
@@ -1013,8 +2626,9 @@ for (i in 1:100){
   
   source(paste0(input_code_cd,"projection function new2_ind.R"))
   
-  write_xlsx(ktaus_all, paste0(output_data_cd,"ktau_output_y2019_outliers_newCV_2-17-26_draw", i, "_ind.xlsx"))  #save the data
-  write_xlsx(sims_all, paste0(output_data_cd,"model_output_y2019_outliers_newCV_2-17-26_draw", i, "_ind.xlsx"))  #save the data
+  write_xlsx(ktaus_all, paste0(output_data_cd,"ktau_output_y2019_outliers_newCV_7-13-26_draw", i, "_ind.xlsx"))  #save the data
+  write_xlsx(ktaus_strata_all, paste0(output_data_cd,"ktau_output_strata_y2019_outliers_newCV_7-13-26_draw", i, "_ind.xlsx"))  #save the data
+  write_xlsx(sims_all, paste0(output_data_cd,"model_output_y2019_outliers_newCV_7-13-26_draw", i, "_ind.xlsx"))  #save the data
   
 }
 
@@ -1031,7 +2645,7 @@ for(yr in c(2019, 2020, 2021)){
 # output from catch w/residual correlation
 ### Catch and welfare ### 
 files_expected <- file.path(
-  output_data_cd,  paste0("model_output_y", yr, "_outliers_newCV_2-17-26_draw", 1:100, ".xlsx"))
+  output_data_cd,  paste0("model_output_y", yr, "_outliers_newCV_7-13-26_draw", 1:100, ".xlsx"))
 
 # Check which exist
 exists <- file.exists(files_expected)
@@ -1050,12 +2664,12 @@ dt_all <- data.table::rbindlist(
   use.names = TRUE,
   fill = TRUE
 )
-write_xlsx(dt_all, paste0(output_data_cd,"model_output_y", yr, "_outliers_newCV_2-17-26_ALLDRAWS.xlsx"))  #save the data
+write_xlsx(dt_all, paste0(output_data_cd,"model_output_y", yr, "_outliers_newCV_7-13-26_ALLDRAWS.xlsx"))  #save the data
 
 
 # output from catch w/out residual correlation
 files_expected <- file.path(
-  output_data_cd,  paste0("model_output_y", yr,"_outliers_newCV_2-17-26_draw", 1:100, "_ind.xlsx"))
+  output_data_cd,  paste0("model_output_y", yr,"_outliers_newCV_7-13-26_draw", 1:100, "_ind.xlsx"))
 
 # Check which exist
 exists <- file.exists(files_expected)
@@ -1074,13 +2688,13 @@ dt_all <- data.table::rbindlist(
   use.names = TRUE,
   fill = TRUE
 )
-write_xlsx(dt_all, paste0(output_data_cd,"model_output_y", yr,"_outliers_newCV_2-17-26_ALLDRAWS_ind.xlsx"))  #save the data
+write_xlsx(dt_all, paste0(output_data_cd,"model_output_y", yr,"_outliers_newCV_7-13-26_ALLDRAWS_ind.xlsx"))  #save the data
 
 
 ### Correlations ### 
 # output from catch w/residual correlation
 files_expected <- file.path(
-  output_data_cd,  paste0("ktau_output_y", yr,"_outliers_newCV_2-17-26_draw", 1:100, ".xlsx"))
+  output_data_cd,  paste0("ktau_output_y", yr,"_outliers_newCV_7-13-26_draw", 1:100, ".xlsx"))
 
 # Check which exist
 exists <- file.exists(files_expected)
@@ -1099,13 +2713,13 @@ dt_all <- data.table::rbindlist(
   use.names = TRUE,
   fill = TRUE
 )
-write_xlsx(dt_all, paste0(output_data_cd,"ktau_output_y", yr, "_outliers_newCV_2-17-26_ALLDRAWS.xlsx"))  #save the data
+write_xlsx(dt_all, paste0(output_data_cd,"ktau_output_y", yr, "_outliers_newCV_7-13-26_ALLDRAWS.xlsx"))  #save the data
 
 
 
 # output from catch w/out residual correlation
 files_expected <- file.path(
-  output_data_cd,  paste0("ktau_output_y", yr,"_outliers_newCV_2-17-26_draw", 1:100, "_ind.xlsx"))
+  output_data_cd,  paste0("ktau_output_y", yr,"_outliers_newCV_7-13-26_draw", 1:100, "_ind.xlsx"))
 
 # Check which exist
 exists <- file.exists(files_expected)
@@ -1124,7 +2738,7 @@ dt_all <- data.table::rbindlist(
   use.names = TRUE,
   fill = TRUE
 )
-write_xlsx(dt_all, paste0(output_data_cd,"ktau_output_y", yr,"_outliers_newCV_2-17-26_ALLDRAWS_ind.xlsx"))  #save the data
+write_xlsx(dt_all, paste0(output_data_cd,"ktau_output_y", yr,"_outliers_newCV_7-13-26_ALLDRAWS_ind.xlsx"))  #save the data
 }
 
 
@@ -1139,7 +2753,7 @@ for(yr in c(2019, 2020, 2021)){
 yr_minus1=yr-1
 
 #model_output<- paste0("model_output_y", yr, "_outliers_10-8-25_ind.xlsx") #original output
-model_output<- paste0("model_output_y", yr, "_outliers_newCV_2-17-26_ALLDRAWS_ind.xlsx") #updated output
+model_output<- paste0("model_output_y", yr, "_outliers_newCV_7-13-26_ALLDRAWS_ind.xlsx") #updated output
 
 historical_catch <- read_dta(paste0(input_data_cd,"cod_hadd_catch_data_1_15.dta"))
 historical_catch<-historical_catch %>% 
@@ -1251,7 +2865,7 @@ output_summarized<-output_summarized %>%
 
 #Decadal projections - correlated residuals
 #model_output<- paste0("model_output_y", yr,"_outliers_10-8-25.xlsx") #original output
-model_output<- paste0("model_output_y", yr,"_outliers_newCV_2-17-26_ALLDRAWS.xlsx") #updated output
+model_output<- paste0("model_output_y", yr,"_outliers_newCV_7-13-26_ALLDRAWS.xlsx") #updated output
 
 base_output_summarized<-read_excel(paste0(output_data_cd, model_output)) %>% 
   separate(domain, into = c("correlation", "rest"), sep = "_") %>%
@@ -1363,11 +2977,11 @@ output_combined0$period <- as.character(output_combined0$period)
 str(output_combined0$period)
 
 #write_rds(output_combined0, paste0(output_data_cd,"model_output_y", yr,"_outliers_10-8-25_reformat_coast.rds"))  #save the data - original
-write_rds(output_combined0, paste0(output_data_cd,"model_output_y", yr,"_outliers_newCV_2-17-26_reformat_coast.rds"))  #save the data -updated
+write_rds(output_combined0, paste0(output_data_cd,"model_output_y", yr,"_outliers_newCV_7-13-26_reformat_coast.rds"))  #save the data -updated
 
 # Coastwide by fishing mode data aggregation
 #model_output<- paste0("model_output_y",yr,"_outliers_10-8-25_ind.xlsx") #original output
-model_output<- paste0("model_output_y", yr, "_outliers_newCV_2-17-26_ALLDRAWS_ind.xlsx") #updated output
+model_output<- paste0("model_output_y", yr, "_outliers_newCV_7-13-26_ALLDRAWS_ind.xlsx") #updated output
 
 base_output_summarized<-read_excel(paste0(output_data_cd, model_output)) %>% 
   separate(domain, into = c("correlation", "rest"), sep = "_") %>%
@@ -1466,7 +3080,7 @@ output_summarized<-output_summarized %>%
 
 #Decadal projections - correlated residuals
 #model_output<- paste0("model_output_y",yr,"_outliers_10-8-25.xlsx") #original output
-model_output<- paste0("model_output_y", yr, "_outliers_newCV_2-17-26_ALLDRAWS.xlsx") #updated output
+model_output<- paste0("model_output_y", yr, "_outliers_newCV_7-13-26_ALLDRAWS.xlsx") #updated output
 
 base_output_summarized<-read_excel(paste0(output_data_cd, model_output)) %>% 
   separate(domain, into = c("correlation", "rest"), sep = "_") %>%
@@ -1579,13 +3193,13 @@ output_combined0$period <- as.character(output_combined0$period)
 str(output_combined0$period)
 
 #write_rds(output_combined0, paste0(output_data_cd,"model_output_y", yr,"_outliers_10-8-25_reformat_mode.rds"))  #save the data - original 
-write_rds(output_combined0, paste0(output_data_cd,"model_output_y", yr,"_outliers_newCV_2-17-26_reformat_mode.rds"))  #save the data - updated
+write_rds(output_combined0, paste0(output_data_cd,"model_output_y", yr,"_outliers_newCV_7-13-26_reformat_mode.rds"))  #save the data - updated
 
 
 # Model output by state aggregation
 
 #model_output<- paste0("model_output_y", yr,"_outliers_10-8-25_ind.xlsx") #original output
-model_output<- paste0("model_output_y", yr, "_outliers_newCV_2-17-26_ALLDRAWS_ind.xlsx") #updated output
+model_output<- paste0("model_output_y", yr, "_outliers_newCV_7-13-26_ALLDRAWS_ind.xlsx") #updated output
 
 base_output_summarized<-read_excel(paste0(output_data_cd, model_output)) %>% 
   separate(domain, into = c("correlation", "rest"), sep = "_") %>%
@@ -1684,7 +3298,7 @@ output_summarized<-output_summarized %>%
 
 #Decadal projections - correlated residuals
 #model_output<- paste0("model_output_y", yr,"_outliers_10-8-25.xlsx") #original output
-model_output<- paste0("model_output_y", yr, "_outliers_newCV_2-17-26_ALLDRAWS.xlsx") #updated output
+model_output<- paste0("model_output_y", yr, "_outliers_newCV_7-13-26_ALLDRAWS.xlsx") #updated output
 
 base_output_summarized<-read_excel(paste0(output_data_cd, model_output)) %>% 
   separate(domain, into = c("correlation", "rest"), sep = "_") %>%
@@ -1797,7 +3411,7 @@ output_combined0$period <- as.character(output_combined0$period)
 str(output_combined0$period)
 
 #write_rds(output_combined0, paste0(output_data_cd,"model_output_y", yr,"_outliers_10-8-25_reformat_state.rds"))  #save the data - original 
-write_rds(output_combined0, paste0(output_data_cd,"model_output_y", yr,"_outliers_newCV_2-17-26_reformat_state.rds"))  #save the data - updated
+write_rds(output_combined0, paste0(output_data_cd,"model_output_y", yr,"_outliers_newCV_7-13-26_reformat_state.rds"))  #save the data - updated
 
 }
 
@@ -2062,7 +3676,7 @@ conflicts_prefer(dplyr::summarise)
 conflicts_prefer(dplyr::count)
 
 input_data_cd <- "E:/Lou_projects/welfare-model-GoM/input_data/"
-input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/code/"
+input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/Climate-and-Catch-Dependence-in-Rec.-Fisheries/code/fishery simulation/"
 output_data_cd<- "C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/"
 
 n_draws<-100 #number of simulated choice occasions per period

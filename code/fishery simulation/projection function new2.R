@@ -8,13 +8,13 @@ p_star_hadd<-p_star_hadd_variable
 cod_hadd_catch_data <- catch_data_all %>%
   dplyr::right_join(regs_check, by="period2") %>% 
   dplyr::select(-dtrip, -period) 
-#length(unique(cod_hadd_catch_data$period2))
 
 param_draws<- readRDS(paste0(input_data_cd, "costs_data_", y,"draw", i,".rds")) %>% 
   select(-month)
 
 calibration_data_table<-readRDS(paste0(input_data_cd, "calibration_data_", y,"draw",i,".rds")) %>% 
   dplyr::select(period2, n_choice_occasions)
+
 
 # loop around the the suffix on the catch variables 
 specs<- c("corr_clayton1", "corr_clayton2","corr_clayton3","corr_clayton4","corr_clayton5","corr_clayton6","corr_clayton7","corr_clayton8",
@@ -117,7 +117,6 @@ for (k in specs){
   trip_data<-trip_data %>% 
     dplyr::left_join(trip_data_hadd, by=c("period2", "catch_draw", "tripid",  "month"))
 
-
   
   trip_data<-trip_data %>% 
     dplyr::left_join(param_draws,by=c("period2", "catch_draw", "tripid"))
@@ -187,21 +186,43 @@ for (k in specs){
                   tot_cat_cod_base=tot_keep_cod_base+tot_rel_cod_base, 
                   tot_cat_hadd_base=tot_keep_hadd_base+tot_rel_hadd_base)                
   
-  # save the first catch draw to compute correlations
-  trip_data_draws<-mean_trip_data %>% 
-    filter(catch_draw<=10) %>% 
-    select(period2, month, tripid, tot_keep_cod_new,tot_keep_hadd_new, tot_rel_cod_new, tot_rel_hadd_new, tot_cat_cod_new, tot_cat_hadd_new, 
-           tot_keep_cod_base,tot_keep_hadd_base, tot_rel_cod_base, tot_rel_hadd_base, tot_cat_cod_base, tot_cat_hadd_base, catch_draw) %>% 
-    tidyr::separate(period2, into = c("mode", "period", "area", "state")) %>% 
-    dplyr::mutate(period2 = paste0(mode, "_", period, "_", area, "_", state), 
-                  tot_cod_hadd_cat_new=tot_cat_cod_new+tot_cat_hadd_new) 
+  # save catch draws to compute correlations
+  trip_data_draws <- mean_trip_data %>% 
+    dplyr::filter(
+      alt == 1,
+      catch_draw <= 10
+    ) %>% 
+    dplyr::select(
+      period2, month, tripid,
+      tot_keep_cod_new, tot_keep_hadd_new,
+      tot_rel_cod_new, tot_rel_hadd_new,
+      tot_cat_cod_new, tot_cat_hadd_new, 
+      tot_keep_cod_base, tot_keep_hadd_base,
+      tot_rel_cod_base, tot_rel_hadd_base,
+      tot_cat_cod_base, tot_cat_hadd_base,
+      catch_draw
+    ) %>% 
+    tidyr::separate(
+      period2,
+      into = c("mode", "period", "area", "state"),
+      sep = "_",
+      remove = FALSE
+    ) %>% 
+    dplyr::mutate(
+      month = as.integer(month),
+      state = as.character(state),
+      mode = as.character(mode),
+      area = as.character(area),
+      domain3 = paste(state, mode, area, month, sep = "_"),
+      tot_cod_catch_new = tot_keep_cod_new + tot_rel_cod_new,
+      tot_hadd_catch_new = tot_keep_hadd_new + tot_rel_hadd_new,
+      tot_cod_hadd_cat_new = tot_cat_cod_new + tot_cat_hadd_new,
+      draw = i
+    )
   
   trip_data_draws$draw=i
   
-  
-  
-  
-  
+
   mean_trip_data <- mean_trip_data %>% 
     dplyr::select(-beta_opt_out, -beta_opt_out_age, 
                   -beta_opt_out_likely, -beta_opt_out_prefer, -beta_sqrt_cod_hadd_keep, 
@@ -269,9 +290,6 @@ for (k in specs){
     .[]
   
 
-    
-
-
   mean_trip_data<-mean_trip_data %>% 
     left_join(calibration_data_table, by = "period2") 
   
@@ -322,704 +340,227 @@ for (k in specs){
   names(sims)[names(sims) == "prob0"] = "ntrips_base"
   names(sims)[names(sims) == "probA"] = "ntrips_alt"
   
-  
-  # Assess the inter-species correlation in catch versus  correlation in keep 
-    # a) Draw 10,000 catch draws in proportion to the projected number of trips across the fishing year 
-    # b) Compute kendall's tau
-  
-  dtrip_wts<- sims %>%
-    dplyr::group_by(period2) %>%
-    dplyr::summarise(ntrips_alt = sum(ntrips_alt),
-                     .groups="drop") %>%
-    dplyr::ungroup()    %>%
-    mutate(weight = ntrips_alt / sum(ntrips_alt)) 
-  length(unique(sims$period2))
-  
-  unique(dtrip_wts$period2)
-  unique(sims$period2)
-  length(unique(trip_data_draws$period2))
-  
-  # Data for fishery-wide ktau's
-  keep_rel_pairs_annual <-data.table::as.data.table(trip_data_draws) 
-  
-  keep_rel_pairs_annual <- keep_rel_pairs_annual %>%
-    left_join(dtrip_wts, by = "period2")
-  
- check<-keep_rel_pairs_annual %>% 
-   dplyr::filter(is.na(weight))
- 
-  keep_rel_pairs_annual <- keep_rel_pairs_annual %>%
-    slice_sample(n = 2000, weight_by = weight) %>%
-    dplyr::mutate(tot_cod_catch_new=tot_keep_cod_new+tot_rel_cod_new,
-                  tot_hadd_catch_new=tot_keep_hadd_new+tot_rel_hadd_new, 
-                  tot_cod_hadd_catch_new=tot_cod_catch_new+tot_hadd_catch_new)
- 
-  # Data for mode-specific ktau's
-  keep_rel_pairs_fh <-data.table::as.data.table(trip_data_draws) %>% 
-    dplyr::filter(mode=="fh")
-  
-  keep_rel_pairs_fh <- keep_rel_pairs_fh %>%
-    left_join(dtrip_wts, by = "period2")
-  
-  keep_rel_pairs_fh <- keep_rel_pairs_fh %>%
-    slice_sample(n = 2000, weight_by = weight) %>%
-    dplyr::mutate(tot_cod_catch_new=tot_keep_cod_new+tot_rel_cod_new,
-                  tot_hadd_catch_new=tot_keep_hadd_new+tot_rel_hadd_new, 
-                  tot_cod_hadd_catch_new=tot_cod_catch_new+tot_hadd_catch_new)
-  
-  keep_rel_pairs_pr <-data.table::as.data.table(trip_data_draws) %>% 
-    dplyr::filter(mode=="pr")
-  
-  keep_rel_pairs_pr <- keep_rel_pairs_pr %>%
-    left_join(dtrip_wts, by = "period2")
-  
-  keep_rel_pairs_pr <- keep_rel_pairs_pr %>%
-    slice_sample(n = 2000, weight_by = weight) %>%
-    dplyr::mutate(tot_cod_catch_new=tot_keep_cod_new+tot_rel_cod_new,
-                  tot_hadd_catch_new=tot_keep_hadd_new+tot_rel_hadd_new, 
-                  tot_cod_hadd_catch_new=tot_cod_catch_new+tot_hadd_catch_new)
-  
-  # Data for state-specific ktau's
-  #MA
-  keep_rel_pairs_MA <-data.table::as.data.table(trip_data_draws) %>% 
-    dplyr::filter(state==25)
-  
-  keep_rel_pairs_MA <- keep_rel_pairs_MA %>%
-    left_join(dtrip_wts, by = "period2")
-  
-  keep_rel_pairs_MA <- keep_rel_pairs_MA %>%
-    slice_sample(n = 2000, weight_by = weight) %>%
-    dplyr::mutate(tot_cod_catch_new=tot_keep_cod_new+tot_rel_cod_new,
-                  tot_hadd_catch_new=tot_keep_hadd_new+tot_rel_hadd_new, 
-                  tot_cod_hadd_catch_new=tot_cod_catch_new+tot_hadd_catch_new)
-  
-  #NH
-  keep_rel_pairs_NH <-data.table::as.data.table(trip_data_draws) %>% 
-    dplyr::filter(state==33)
-  
-  keep_rel_pairs_NH <- keep_rel_pairs_NH %>%
-    left_join(dtrip_wts, by = "period2")
-  
-  keep_rel_pairs_NH <- keep_rel_pairs_NH %>%
-    slice_sample(n = 2000, weight_by = weight) %>%
-    dplyr::mutate(tot_cod_catch_new=tot_keep_cod_new+tot_rel_cod_new,
-                  tot_hadd_catch_new=tot_keep_hadd_new+tot_rel_hadd_new, 
-                  tot_cod_hadd_catch_new=tot_cod_catch_new+tot_hadd_catch_new)
-  
-  #ME
-  keep_rel_pairs_ME <-data.table::as.data.table(trip_data_draws) %>% 
-    dplyr::filter(state==23)
-  
-  keep_rel_pairs_ME <- keep_rel_pairs_ME %>%
-    left_join(dtrip_wts, by = "period2")
-  
-  keep_rel_pairs_ME <- keep_rel_pairs_ME %>%
-    slice_sample(n = 2000, weight_by = weight) %>%
-    dplyr::mutate(tot_cod_catch_new=tot_keep_cod_new+tot_rel_cod_new,
-                  tot_hadd_catch_new=tot_keep_hadd_new+tot_rel_hadd_new, 
-                  tot_cod_hadd_catch_new=tot_cod_catch_new+tot_hadd_catch_new)
+  stratum_trip_weights <- sims %>%
+    dplyr::select(
+      period2,
+      month,
+      ntrips_alt
+    ) %>%
+    tidyr::separate(
+      period2,
+      into = c("mode", "period", "area", "state"),
+      sep = "_",
+      remove = FALSE
+    ) %>%
+    dplyr::mutate(
+      month = as.integer(month),
+      state = as.character(state),
+      mode = as.character(mode),
+      area = as.character(area),
+      domain3 = paste(state, mode, area, month, sep = "_")
+    ) %>%
+    dplyr::group_by(
+      state,
+      mode,
+      area,
+      month,
+      domain3
+    ) %>%
+    dplyr::summarise(
+      ntrips_alt = sum(ntrips_alt, na.rm = TRUE),
+      .groups = "drop"
+    )
   
   
-  # Data for month-specific ktau's
-  ktaus_month<-list()
-  
-  for (m in unique(trip_data_draws$month)){
-    trip_data_draws_month<-trip_data_draws %>% 
-      dplyr::filter(month==m)  %>%
-      dplyr::left_join(dtrip_wts, by = "period2") %>% 
-      dplyr::group_by(month) %>%
-      dplyr::mutate(total_weight_month = sum(ntrips_alt, na.rm = TRUE),
-                    pct_of_month = (ntrips_alt / total_weight_month)) %>% 
-      dplyr::ungroup() %>% 
-      slice_sample(n = 2000, weight_by = pct_of_month) %>%
-      dplyr::mutate(tot_cod_catch_new=tot_keep_cod_new+tot_rel_cod_new,
-                    tot_hadd_catch_new=tot_keep_hadd_new+tot_rel_hadd_new, 
-                    tot_cod_hadd_catch_new=tot_cod_catch_new+tot_hadd_catch_new) 
-
-    sum_keep_cod<-sum(trip_data_draws_month$tot_keep_cod_new)
-    sum_keep_hadd<-sum(trip_data_draws_month$tot_keep_hadd_new)
-    sum_catch_cod<-sum(trip_data_draws_month$tot_cat_cod_new)
-    sum_catch_hadd<-sum(trip_data_draws_month$tot_cat_hadd_new)
-    
-
-    # compute medians
-    med_cod <- median(trip_data_draws_month$tot_cat_cod_new, na.rm = TRUE)
-    med_hadd <- median(trip_data_draws_month$tot_cat_hadd_new, na.rm = TRUE)
-    
-    # Loop over percentiles and classify trips
-    # Define percentiles of interest
-    percentiles <- c(0.10, 0.25, 0.50, 0.75, 0.90)
-    
-    # Compute percentiles for cod and haddock
-    cod_q <- quantile(trip_data_draws_month$tot_cat_cod_new, probs = percentiles, na.rm = TRUE)
-    hadd_q <- quantile(trip_data_draws_month$tot_cat_hadd_new, probs = percentiles, na.rm = TRUE)
-    
-    # Loop over percentile *indices* instead of names
-    results <- purrr::map_dfr(seq_along(percentiles), function(z) {
-      cod_thr <- cod_q[[z]]
-      hadd_thr <- hadd_q[[z]]
-      
-      tibble::tibble(
-        percentile = percentiles[z] * 100,  # express as percent (e.g., 10, 25, 50...)
-        cod_threshold = cod_thr,
-        hadd_threshold = hadd_thr,
-        both_above = sum(trip_data_draws_month$tot_cat_cod_new > cod_thr &
-                           trip_data_draws_month$tot_cat_hadd_new > hadd_thr, na.rm = TRUE),
-        both_below = sum(trip_data_draws_month$tot_cat_cod_new <= cod_thr &
-                           trip_data_draws_month$tot_cat_hadd_new <= hadd_thr, na.rm = TRUE)
+  # Calculate Kendall's tau separately within every
+  # state-mode-area-month stratum.
+  #
+  # Catch draws are pooled within a stratum across the retained catch_draw
+  # values, but never pooled across different strata before tau is computed.
+  ktaus_by_stratum <- trip_data_draws %>%
+    dplyr::group_by(
+      state,
+      mode,
+      area,
+      month,
+      domain3
+    ) %>%
+    dplyr::group_modify(
+      ~ compute_stratum_tau(.x)
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::left_join(
+      stratum_trip_weights,
+      by = c(
+        "state",
+        "mode",
+        "area",
+        "month",
+        "domain3"
       )
-    })
-    
-    # Reshape wide so there is one row
-    results_wide <- results %>%
-      tidyr::pivot_wider(
-        names_from = percentile,
-        values_from = c(cod_threshold, hadd_threshold, both_above, both_below),
-        names_glue = "{.value}_{percentile}"
-      )
-    
-    
-    if(sum_keep_cod>0 & sum_keep_hadd>0){
+    ) %>%
+    dplyr::mutate(
+      draw = i,
+      year = y,
+      domain = k
+    )
+  
+  
+  # Check that all correlation strata received projected-trip weights.
+  missing_tau_weights <- ktaus_by_stratum %>%
+    dplyr::filter(
+      is.na(ntrips_alt) |
+        ntrips_alt <= 0
+    )
+  
+  if (nrow(missing_tau_weights) > 0L) {
+    warning(
+      nrow(missing_tau_weights),
+      " state-mode-area-month tau strata have missing or nonpositive ",
+      "projected-trip weights."
+    )
+  }
+  
+  
+  #-----------------------------------------------------------------------
+  # Fishery-wide annual mean of within-stratum Kendall's tau
+  #-----------------------------------------------------------------------
+  
+  ktaus_annual <- aggregate_stratum_tau(
+    data = ktaus_by_stratum,
+    reporting_vars = character(0),
+    domain_label = "all"
+  ) %>%
+    dplyr::mutate(
+      month = 0L,
+      draw = i,
+      year = y
+    )
+  
+  
+  #-----------------------------------------------------------------------
+  # Month-specific mean of within-stratum Kendall's tau
+  #-----------------------------------------------------------------------
+  
+  ktaus_month_all <- aggregate_stratum_tau(
+    data = ktaus_by_stratum,
+    reporting_vars = "month"
+  ) %>%
+    dplyr::mutate(
+      domain1 = "all",
+      draw = i,
+      year = y
+    )
+  
+  
+  #-----------------------------------------------------------------------
+  # Mode-specific annual means
+  #-----------------------------------------------------------------------
+  
+  ktaus_mode <- aggregate_stratum_tau(
+    data = ktaus_by_stratum,
+    reporting_vars = "mode"
+  ) %>%
+    dplyr::transmute(
+      domain1 = mode,
+      month = 0L,
+      draw = i,
+      year = y,
       
-      ktau_keep<- cor.test(trip_data_draws_month$tot_keep_cod_new,
-                           trip_data_draws_month$tot_keep_hadd_new, method = c("kendall"))
+      k_tau_keep_est,
+      k_tau_keep_p,
+      k_tau_catch_est,
+      k_tau_catch_p,
       
-      k_tau_keep_est<-ktau_keep[["estimate"]]
-      k_tau_keep_p<- ktau_keep[["p.value"]]
+      k_tau_keep_unweighted,
+      k_tau_catch_unweighted,
+      k_tau_keep_zero_filled,
+      k_tau_catch_zero_filled,
       
-    }
-    
-    if(sum_keep_cod==0 | sum_keep_hadd==0){
+      med_cod,
+      med_hadd,
+      n_strata,
+      n_valid_keep_strata,
+      n_valid_catch_strata,
+      projected_trips
+    )
+  
+  
+  #-----------------------------------------------------------------------
+  # State-specific annual means
+  #-----------------------------------------------------------------------
+  
+  state_labels <- c(
+    "23" = "ME",
+    "25" = "MA",
+    "33" = "NH"
+  )
+  
+  ktaus_state <- aggregate_stratum_tau(
+    data = ktaus_by_stratum,
+    reporting_vars = "state"
+  ) %>%
+    dplyr::mutate(
+      domain1 = dplyr::recode(
+        as.character(state),
+        !!!state_labels,
+        .default = as.character(state)
+      ),
+      month = 0L,
+      draw = i,
+      year = y
+    ) %>%
+    dplyr::select(
+      -state
+    )
+  
+  
+  #-----------------------------------------------------------------------
+  # Combine reporting levels
+  #-----------------------------------------------------------------------
+  
+  all_ktaus <- dplyr::bind_rows(
+    ktaus_annual,
+    ktaus_month_all,
+    ktaus_state,
+    ktaus_mode
+  ) %>%
+    dplyr::mutate(
+      domain = k
+    ) %>%
+    dplyr::select(
+      domain1,
+      month,
+      draw,
+      year,
+      domain,
       
-      k_tau_keep_est<-0
-      k_tau_keep_p<- 1
+      k_tau_keep_est,
+      k_tau_keep_p,
+      k_tau_catch_est,
+      k_tau_catch_p,
       
-    }
-    
-    if(sum_catch_cod>0 & sum_catch_hadd>0){
+      k_tau_keep_unweighted,
+      k_tau_catch_unweighted,
+      k_tau_keep_zero_filled,
+      k_tau_catch_zero_filled,
       
-      ktau_catch<- cor.test(trip_data_draws_month$tot_cod_catch_new,
-                            trip_data_draws_month$tot_hadd_catch_new, method = c("kendall"))
+      med_cod,
+      med_hadd,
       
-      k_tau_catch_est<-ktau_catch[["estimate"]]
-      k_tau_catch_p<- ktau_catch[["p.value"]]
-    }
-    
-    if(sum_catch_cod==0 | sum_catch_hadd==0){
-      
-      k_tau_catch_est<-0
-      k_tau_catch_p<- 1
-      
-      
-    }
-    # Merge everything into one row of ktaus_annual
-    ktaus_month[[m]] <- cbind(data.frame( k_tau_keep_est, k_tau_keep_p, k_tau_catch_est,k_tau_catch_p,med_cod,
-                                      med_hadd),results_wide)
-    ktaus_month[[m]]$domain<-"all"
-    ktaus_month[[m]]$draw<-i
-    ktaus_month[[m]]$month<-m
-    
-  }
-  
-  ktaus_month_all<-as.data.frame(list.stack(ktaus_month,  fill=TRUE))
-
-  # Annual k-tau estimates
-  sum_keep_cod<-sum(keep_rel_pairs_annual$tot_keep_cod_new)
-  sum_keep_hadd<-sum(keep_rel_pairs_annual$tot_keep_hadd_new)
-  sum_catch_cod<-sum(keep_rel_pairs_annual$tot_cat_cod_new)
-  sum_catch_hadd<-sum(keep_rel_pairs_annual$tot_cat_hadd_new)
-  
-  # Loop over percentiles and classify trips
-  # Define percentiles of interest
-  percentiles <- c(0.10, 0.25, 0.50, 0.75, 0.90)
-  
-  # Compute percentiles for cod and haddock
-  cod_q <- quantile(keep_rel_pairs_annual$tot_cat_cod_new, probs = percentiles, na.rm = TRUE)
-  hadd_q <- quantile(keep_rel_pairs_annual$tot_cat_hadd_new, probs = percentiles, na.rm = TRUE)
-  
-  # Loop over percentile *indices* instead of names
-  results <- purrr::map_dfr(seq_along(percentiles), function(z) {
-    cod_thr <- cod_q[[z]]
-    hadd_thr <- hadd_q[[z]]
-    
-    tibble::tibble(
-      percentile = percentiles[z] * 100,  # express as percent (e.g., 10, 25, 50...)
-      cod_threshold = cod_thr,
-      hadd_threshold = hadd_thr,
-      both_above = sum(keep_rel_pairs_annual$tot_cat_cod_new > cod_thr &
-                         keep_rel_pairs_annual$tot_cat_hadd_new > hadd_thr, na.rm = TRUE),
-      both_below = sum(keep_rel_pairs_annual$tot_cat_cod_new <= cod_thr &
-                         keep_rel_pairs_annual$tot_cat_hadd_new <= hadd_thr, na.rm = TRUE)
-    )
-  })
-  
-  # Reshape wide so there is one row
-  results_wide <- results %>%
-    tidyr::pivot_wider(
-      names_from = percentile,
-      values_from = c(cod_threshold, hadd_threshold, both_above, both_below),
-      names_glue = "{.value}_{percentile}"
+      n_strata,
+      n_valid_keep_strata,
+      n_valid_catch_strata,
+      projected_trips
     )
   
   
-  # compute medians
-  med_cod <- median(keep_rel_pairs_annual$tot_cat_cod_new, na.rm = TRUE)
-  med_hadd <- median(keep_rel_pairs_annual$tot_cat_hadd_new, na.rm = TRUE)
-
-  if(sum_keep_cod>0 & sum_keep_hadd>0){
-    
-    ktau_keep<- cor.test(keep_rel_pairs_annual$tot_keep_cod_new,
-                         keep_rel_pairs_annual$tot_keep_hadd_new, method = c("kendall"))
-    
-    k_tau_keep_est<-ktau_keep[["estimate"]]
-    k_tau_keep_p<- ktau_keep[["p.value"]]
-  }
+  # Optional: retain the complete state-mode-area-month results.
+  assign(
+    paste0("ktaus_strata_new_", k),
+    ktaus_by_stratum
+  )
   
-  if(sum_keep_cod==0 | sum_keep_hadd==0){
-    
-    k_tau_keep_est<-0
-    k_tau_keep_p<- 1
-  }
-  
-  
-  if(sum_catch_cod>0 & sum_catch_hadd>0){
-    
-    ktau_catch<- cor.test(keep_rel_pairs_annual$tot_cod_catch_new,
-                          keep_rel_pairs_annual$tot_hadd_catch_new, method = c("kendall"))
-    
-    k_tau_catch_est<-ktau_catch[["estimate"]]
-    k_tau_catch_p<- ktau_catch[["p.value"]]
-  }
-  
-  if(sum_catch_cod==0 | sum_catch_hadd==0){
-    
-    k_tau_catch_est<-0
-    k_tau_catch_p<- 1
-  }
-  
-  # Merge everything into one row of ktaus_annual
-  ktaus_annual <- cbind(data.frame( k_tau_keep_est, k_tau_keep_p, k_tau_catch_est,k_tau_catch_p,med_cod,
-      med_hadd),results_wide)
-  
-  ktaus_annual$domain<-"all"
-  ktaus_annual$draw<-i
-  ktaus_annual$month<-0
-  
-  
-  # for-hire ktau estimates
-  sum_keep_cod<-sum(keep_rel_pairs_fh$tot_keep_cod_new)
-  sum_keep_hadd<-sum(keep_rel_pairs_fh$tot_keep_hadd_new)
-  sum_catch_cod<-sum(keep_rel_pairs_fh$tot_cat_cod_new)
-  sum_catch_hadd<-sum(keep_rel_pairs_fh$tot_cat_hadd_new)
-  
-  # compute medians
-  med_cod <- median(keep_rel_pairs_fh$tot_cat_cod_new, na.rm = TRUE)
-  med_hadd <- median(keep_rel_pairs_fh$tot_cat_hadd_new, na.rm = TRUE)
-  
-  # Loop over percentiles and classify trips
-  # Define percentiles of interest
-  percentiles <- c(0.10, 0.25, 0.50, 0.75, 0.90)
-  
-  # Compute percentiles for cod and haddock
-  cod_q <- quantile(keep_rel_pairs_fh$tot_cat_cod_new, probs = percentiles, na.rm = TRUE)
-  hadd_q <- quantile(keep_rel_pairs_fh$tot_cat_hadd_new, probs = percentiles, na.rm = TRUE)
-  
-  # Loop over percentile *indices* instead of names
-  results <- purrr::map_dfr(seq_along(percentiles), function(z) {
-    cod_thr <- cod_q[[z]]
-    hadd_thr <- hadd_q[[z]]
-    
-    tibble::tibble(
-      percentile = percentiles[z] * 100,  # express as percent (e.g., 10, 25, 50...)
-      cod_threshold = cod_thr,
-      hadd_threshold = hadd_thr,
-      both_above = sum(keep_rel_pairs_fh$tot_cat_cod_new > cod_thr &
-                         keep_rel_pairs_fh$tot_cat_hadd_new > hadd_thr, na.rm = TRUE),
-      both_below = sum(keep_rel_pairs_fh$tot_cat_cod_new <= cod_thr &
-                         keep_rel_pairs_fh$tot_cat_hadd_new <= hadd_thr, na.rm = TRUE)
-    )
-  })
-  
-  # Reshape wide so there is one row
-  results_wide <- results %>%
-    tidyr::pivot_wider(
-      names_from = percentile,
-      values_from = c(cod_threshold, hadd_threshold, both_above, both_below),
-      names_glue = "{.value}_{percentile}"
-    )
-  
-  if(sum_keep_cod>0 & sum_keep_hadd>0){
-    
-    ktau_keep<- cor.test(keep_rel_pairs_fh$tot_keep_cod_new,
-                         keep_rel_pairs_fh$tot_keep_hadd_new, method = c("kendall"))
-    
-    k_tau_keep_est<-ktau_keep[["estimate"]]
-    k_tau_keep_p<- ktau_keep[["p.value"]]
-  }
-  
-  if(sum_keep_cod==0 | sum_keep_hadd==0){
-    
-    k_tau_keep_est<-0
-    k_tau_keep_p<- 1
-  }
-  
-  
-  if(sum_catch_cod>0 & sum_catch_hadd>0){
-    
-    ktau_catch<- cor.test(keep_rel_pairs_fh$tot_cod_catch_new,
-                          keep_rel_pairs_fh$tot_hadd_catch_new, method = c("kendall"))
-    
-    k_tau_catch_est<-ktau_catch[["estimate"]]
-    k_tau_catch_p<- ktau_catch[["p.value"]]
-  }
-  
-  if(sum_catch_cod==0 | sum_catch_hadd==0){
-    
-    k_tau_catch_est<-0
-    k_tau_catch_p<- 1
-  }
-  
-  # Merge everything into one row of ktaus_annual
-  ktaus_fh <- cbind(data.frame( k_tau_keep_est, k_tau_keep_p, k_tau_catch_est,k_tau_catch_p,med_cod,
-                                    med_hadd),results_wide)
-
-  ktaus_fh$domain<-"fh"
-  ktaus_fh$draw<-i
-  ktaus_fh$month<-0
-  
-  # pr ktau estimates
-  sum_keep_cod<-sum(keep_rel_pairs_pr$tot_keep_cod_new)
-  sum_keep_hadd<-sum(keep_rel_pairs_pr$tot_keep_hadd_new)
-  sum_catch_cod<-sum(keep_rel_pairs_pr$tot_cat_cod_new)
-  sum_catch_hadd<-sum(keep_rel_pairs_pr$tot_cat_hadd_new)
-  
-  # compute medians
-  med_cod <- median(keep_rel_pairs_pr$tot_cat_cod_new, na.rm = TRUE)
-  med_hadd <- median(keep_rel_pairs_pr$tot_cat_hadd_new, na.rm = TRUE)
-  
-  # Define percentiles of interest
-  percentiles <- c(0.10, 0.25, 0.50, 0.75, 0.90)
-  
-  # Compute percentiles for cod and haddock
-  cod_q <- quantile(keep_rel_pairs_pr$tot_cat_cod_new, probs = percentiles, na.rm = TRUE)
-  hadd_q <- quantile(keep_rel_pairs_pr$tot_cat_hadd_new, probs = percentiles, na.rm = TRUE)
-  
-  # Loop over percentile *indices* instead of names
-  results <- purrr::map_dfr(seq_along(percentiles), function(z) {
-    cod_thr <- cod_q[[z]]
-    hadd_thr <- hadd_q[[z]]
-    
-    tibble::tibble(
-      percentile = percentiles[z] * 100,  # express as percent (e.g., 10, 25, 50...)
-      cod_threshold = cod_thr,
-      hadd_threshold = hadd_thr,
-      both_above = sum(keep_rel_pairs_pr$tot_cat_cod_new > cod_thr &
-                         keep_rel_pairs_pr$tot_cat_hadd_new > hadd_thr, na.rm = TRUE),
-      both_below = sum(keep_rel_pairs_pr$tot_cat_cod_new <= cod_thr &
-                         keep_rel_pairs_pr$tot_cat_hadd_new <= hadd_thr, na.rm = TRUE)
-    )
-  })
-  
-  # Reshape wide so there is one row
-  results_wide <- results %>%
-    tidyr::pivot_wider(
-      names_from = percentile,
-      values_from = c(cod_threshold, hadd_threshold, both_above, both_below),
-      names_glue = "{.value}_{percentile}"
-    )
-  
-
-  if(sum_keep_cod>0 & sum_keep_hadd>0){
-    
-    ktau_keep<- cor.test(keep_rel_pairs_pr$tot_keep_cod_new,
-                         keep_rel_pairs_pr$tot_keep_hadd_new, method = c("kendall"))
-    
-    k_tau_keep_est<-ktau_keep[["estimate"]]
-    k_tau_keep_p<- ktau_keep[["p.value"]]
-  }
-  
-  if(sum_keep_cod==0 | sum_keep_hadd==0){
-    
-    k_tau_keep_est<-0
-    k_tau_keep_p<- 1
-  }
-  
-  
-  if(sum_catch_cod>0 & sum_catch_hadd>0){
-    
-    ktau_catch<- cor.test(keep_rel_pairs_pr$tot_cod_catch_new,
-                          keep_rel_pairs_pr$tot_hadd_catch_new, method = c("kendall"))
-    
-    k_tau_catch_est<-ktau_catch[["estimate"]]
-    k_tau_catch_p<- ktau_catch[["p.value"]]
-  }
-  
-  if(sum_catch_cod==0 | sum_catch_hadd==0){
-    
-    k_tau_catch_est<-0
-    k_tau_catch_p<- 1
-  }
-  
-  # Merge everything into one row of ktaus_annual
-  ktaus_pr <- cbind(data.frame( k_tau_keep_est, k_tau_keep_p, k_tau_catch_est,k_tau_catch_p,med_cod,
-                                med_hadd),results_wide)
-  ktaus_pr$domain<-"pr"
-  ktaus_pr$draw<-i
-  ktaus_pr$month<-0
-  
-  
-  
-  
-  # NH ktau estimates
-  sum_keep_cod<-sum(keep_rel_pairs_NH$tot_keep_cod_new)
-  sum_keep_hadd<-sum(keep_rel_pairs_NH$tot_keep_hadd_new)
-  sum_catch_cod<-sum(keep_rel_pairs_NH$tot_cat_cod_new)
-  sum_catch_hadd<-sum(keep_rel_pairs_NH$tot_cat_hadd_new)
-  
-  # compute medians
-  med_cod <- median(keep_rel_pairs_NH$tot_cat_cod_new, na.rm = TRUE)
-  med_hadd <- median(keep_rel_pairs_NH$tot_cat_hadd_new, na.rm = TRUE)
-  
-  # Define percentiles of interest
-  percentiles <- c(0.10, 0.25, 0.50, 0.75, 0.90)
-  
-  # Compute percentiles for cod and haddock
-  cod_q <- quantile(keep_rel_pairs_NH$tot_cat_cod_new, probs = percentiles, na.rm = TRUE)
-  hadd_q <- quantile(keep_rel_pairs_NH$tot_cat_hadd_new, probs = percentiles, na.rm = TRUE)
-  
-  # Loop over percentile *indices* instead of names
-  results <- purrr::map_dfr(seq_along(percentiles), function(z) {
-    cod_thr <- cod_q[[z]]
-    hadd_thr <- hadd_q[[z]]
-    
-    tibble::tibble(
-      percentile = percentiles[z] * 100,  # express as percent (e.g., 10, 25, 50...)
-      cod_threshold = cod_thr,
-      hadd_threshold = hadd_thr,
-      both_above = sum(keep_rel_pairs_NH$tot_cat_cod_new > cod_thr &
-                         keep_rel_pairs_NH$tot_cat_hadd_new > hadd_thr, na.rm = TRUE),
-      both_below = sum(keep_rel_pairs_NH$tot_cat_cod_new <= cod_thr &
-                         keep_rel_pairs_NH$tot_cat_hadd_new <= hadd_thr, na.rm = TRUE)
-    )
-  })
-  
-  # Reshape wide so there is one row
-  results_wide <- results %>%
-    tidyr::pivot_wider(
-      names_from = percentile,
-      values_from = c(cod_threshold, hadd_threshold, both_above, both_below),
-      names_glue = "{.value}_{percentile}"
-    )
-  
-  
-  
-  if(sum_keep_cod>0 & sum_keep_hadd>0){
-    
-    ktau_keep<- cor.test(keep_rel_pairs_NH$tot_keep_cod_new,
-                         keep_rel_pairs_NH$tot_keep_hadd_new, method = c("kendall"))
-    
-    k_tau_keep_est<-ktau_keep[["estimate"]]
-    k_tau_keep_p<- ktau_keep[["p.value"]]
-  }
-  
-  if(sum_keep_cod==0 | sum_keep_hadd==0){
-    
-    k_tau_keep_est<-0
-    k_tau_keep_p<- 1
-  }
-  
-  
-  if(sum_catch_cod>0 & sum_catch_hadd>0){
-    
-    ktau_catch<- cor.test(keep_rel_pairs_NH$tot_cod_catch_new,
-                          keep_rel_pairs_NH$tot_hadd_catch_new, method = c("kendall"))
-    
-    k_tau_catch_est<-ktau_catch[["estimate"]]
-    k_tau_catch_p<- ktau_catch[["p.value"]]
-  }
-  
-  if(sum_catch_cod==0 | sum_catch_hadd==0){
-    
-    k_tau_catch_est<-0
-    k_tau_catch_p<- 1
-  }
-  
-  # Merge everything into one row of ktaus_annual
-  ktaus_NH <- cbind(data.frame( k_tau_keep_est, k_tau_keep_p, k_tau_catch_est,k_tau_catch_p,med_cod,
-                                med_hadd),results_wide)
-  
-  ktaus_NH$domain<-"NH"
-  ktaus_NH$draw<-i
-  ktaus_NH$month<-0
-  
-  
-  # MA ktau estimates
-  sum_keep_cod<-sum(keep_rel_pairs_MA$tot_keep_cod_new)
-  sum_keep_hadd<-sum(keep_rel_pairs_MA$tot_keep_hadd_new)
-  sum_catch_cod<-sum(keep_rel_pairs_MA$tot_cat_cod_new)
-  sum_catch_hadd<-sum(keep_rel_pairs_MA$tot_cat_hadd_new)
-  
-  # compute medians
-  med_cod <- median(keep_rel_pairs_MA$tot_cat_cod_new, na.rm = TRUE)
-  med_hadd <- median(keep_rel_pairs_MA$tot_cat_hadd_new, na.rm = TRUE)
-  
-  # Define percentiles of interest
-  percentiles <- c(0.10, 0.25, 0.50, 0.75, 0.90)
-  
-  # Compute percentiles for cod and haddock
-  cod_q <- quantile(keep_rel_pairs_MA$tot_cat_cod_new, probs = percentiles, na.rm = TRUE)
-  hadd_q <- quantile(keep_rel_pairs_MA$tot_cat_hadd_new, probs = percentiles, na.rm = TRUE)
-  
-  # Loop over percentile *indices* instead of names
-  results <- purrr::map_dfr(seq_along(percentiles), function(z) {
-    cod_thr <- cod_q[[z]]
-    hadd_thr <- hadd_q[[z]]
-    
-    tibble::tibble(
-      percentile = percentiles[z] * 100,  # express as percent (e.g., 10, 25, 50...)
-      cod_threshold = cod_thr,
-      hadd_threshold = hadd_thr,
-      both_above = sum(keep_rel_pairs_MA$tot_cat_cod_new > cod_thr &
-                         keep_rel_pairs_MA$tot_cat_hadd_new > hadd_thr, na.rm = TRUE),
-      both_below = sum(keep_rel_pairs_MA$tot_cat_cod_new <= cod_thr &
-                         keep_rel_pairs_MA$tot_cat_hadd_new <= hadd_thr, na.rm = TRUE)
-    )
-  })
-  
-  # Reshape wide so there is one row
-  results_wide <- results %>%
-    tidyr::pivot_wider(
-      names_from = percentile,
-      values_from = c(cod_threshold, hadd_threshold, both_above, both_below),
-      names_glue = "{.value}_{percentile}"
-    )
-  
-  
-  if(sum_keep_cod>0 & sum_keep_hadd>0){
-    
-    ktau_keep<- cor.test(keep_rel_pairs_MA$tot_keep_cod_new,
-                         keep_rel_pairs_MA$tot_keep_hadd_new, method = c("kendall"))
-    
-    k_tau_keep_est<-ktau_keep[["estimate"]]
-    k_tau_keep_p<- ktau_keep[["p.value"]]
-  }
-  
-  if(sum_keep_cod==0 | sum_keep_hadd==0){
-    
-    k_tau_keep_est<-0
-    k_tau_keep_p<- 1
-  }
-  
-  
-  if(sum_catch_cod>0 & sum_catch_hadd>0){
-    
-    ktau_catch<- cor.test(keep_rel_pairs_MA$tot_cod_catch_new,
-                          keep_rel_pairs_MA$tot_hadd_catch_new, method = c("kendall"))
-    
-    k_tau_catch_est<-ktau_catch[["estimate"]]
-    k_tau_catch_p<- ktau_catch[["p.value"]]
-  }
-  
-  if(sum_catch_cod==0 | sum_catch_hadd==0){
-    
-    k_tau_catch_est<-0
-    k_tau_catch_p<- 1
-  }
-  
-  # Merge everything into one row of ktaus_annual
-  ktaus_MA <- cbind(data.frame( k_tau_keep_est, k_tau_keep_p, k_tau_catch_est,k_tau_catch_p,med_cod,
-                                med_hadd),results_wide)
-
-  ktaus_MA$domain<-"MA"
-  ktaus_MA$draw<-i
-  ktaus_MA$month<-0
-  
-  ###ME ktau estimates
-  sum_keep_cod<-sum(keep_rel_pairs_ME$tot_keep_cod_new)
-  sum_keep_hadd<-sum(keep_rel_pairs_ME$tot_keep_hadd_new)
-  sum_catch_cod<-sum(keep_rel_pairs_ME$tot_cat_cod_new)
-  sum_catch_hadd<-sum(keep_rel_pairs_ME$tot_cat_hadd_new)
-  
-  # compute medians
-  med_cod <- median(keep_rel_pairs_ME$tot_cat_cod_new, na.rm = TRUE)
-  med_hadd <- median(keep_rel_pairs_ME$tot_cat_hadd_new, na.rm = TRUE)
-  
-  # Define percentiles of interest
-  percentiles <- c(0.10, 0.25, 0.50, 0.75, 0.90)
-  
-  # Compute percentiles for cod and haddock
-  cod_q <- quantile(keep_rel_pairs_ME$tot_cat_cod_new, probs = percentiles, na.rm = TRUE)
-  hadd_q <- quantile(keep_rel_pairs_ME$tot_cat_hadd_new, probs = percentiles, na.rm = TRUE)
-  
-  # Loop over percentile *indices* instead of names
-  results <- purrr::map_dfr(seq_along(percentiles), function(z) {
-    cod_thr <- cod_q[[z]]
-    hadd_thr <- hadd_q[[z]]
-    
-    tibble::tibble(
-      percentile = percentiles[z] * 100,  # express as percent (e.g., 10, 25, 50...)
-      cod_threshold = cod_thr,
-      hadd_threshold = hadd_thr,
-      both_above = sum(keep_rel_pairs_ME$tot_cat_cod_new > cod_thr &
-                         keep_rel_pairs_ME$tot_cat_hadd_new > hadd_thr, na.rm = TRUE),
-      both_below = sum(keep_rel_pairs_ME$tot_cat_cod_new <= cod_thr &
-                         keep_rel_pairs_ME$tot_cat_hadd_new <= hadd_thr, na.rm = TRUE)
-    )
-  })
-  
-  # Reshape wide so there is one row
-  results_wide <- results %>%
-    tidyr::pivot_wider(
-      names_from = percentile,
-      values_from = c(cod_threshold, hadd_threshold, both_above, both_below),
-      names_glue = "{.value}_{percentile}"
-    )
-  
-
-  if(sum_keep_cod>0 & sum_keep_hadd>0){
-    
-    ktau_keep<- cor.test(keep_rel_pairs_ME$tot_keep_cod_new,
-                         keep_rel_pairs_ME$tot_keep_hadd_new, method = c("kendall"))
-    
-    k_tau_keep_est<-ktau_keep[["estimate"]]
-    k_tau_keep_p<- ktau_keep[["p.value"]]
-  }
-  
-  if(sum_keep_cod==0 | sum_keep_hadd==0){
-    
-    k_tau_keep_est<-0
-    k_tau_keep_p<- 1
-  }
-  
-  
-  if(sum_catch_cod>0 & sum_catch_hadd>0){
-    
-    ktau_catch<- cor.test(keep_rel_pairs_ME$tot_cod_catch_new,
-                          keep_rel_pairs_ME$tot_hadd_catch_new, method = c("kendall"))
-    
-    k_tau_catch_est<-ktau_catch[["estimate"]]
-    k_tau_catch_p<- ktau_catch[["p.value"]]
-  }
-  
-  if(sum_catch_cod==0 | sum_catch_hadd==0){
-    
-    k_tau_catch_est<-0
-    k_tau_catch_p<- 1
-  }
-  
-  # Merge everything into one row of ktaus_annual
-  ktaus_ME <- cbind(data.frame( k_tau_keep_est, k_tau_keep_p, k_tau_catch_est,k_tau_catch_p,med_cod,
-                                med_hadd),results_wide)
-  ktaus_ME$domain<-"ME"
-  ktaus_ME$draw<-i
-  ktaus_ME$month<-0
-  
-
-  #combine all the ktaus
-  all_ktaus<-rbind.fill(ktaus_annual, ktaus_month_all, ktaus_NH, ktaus_MA, ktaus_ME, ktaus_pr, ktaus_fh)
-  all_ktaus<-all_ktaus %>% 
-    dplyr::mutate(year=y) %>% 
-    dplyr::rename(domain1=domain)
   
   sims <- sims %>% 
     separate(period2, into = c("mode", "period", "area", "state"), sep = "_") %>%
@@ -1031,11 +572,22 @@ for (k in specs){
   sims$domain<-k
   assign(paste0("sims_new_", k), sims)
   
-  all_ktaus$domain<-k
-  assign(paste0("all_ktaus_new_", k), all_ktaus)
+  all_ktaus <- dplyr::bind_rows(
+    ktaus_annual,
+    ktaus_month_all,
+    ktaus_state,
+    ktaus_mode
+  ) %>%
+    dplyr::mutate(
+      year = y,
+      draw = i,
+      domain = k
+    )
   
-  keep_rel_pairs_annual$domain<-k
-  assign(paste0("keep_rel_pairs_new_", k), keep_rel_pairs_annual)
+  assign(
+    paste0("all_ktaus_new_", k),
+    all_ktaus
+  )
 
   
 }
@@ -1051,19 +603,21 @@ sims_all <- bind_rows(datasets)
 
 # correlations output
 # Retrieve the results datasets as a list
-dataset_names <- ls(pattern = "^all_ktaus_new_")
+# State-mode-area-month Kendall's tau output
+dataset_names <- ls(
+  pattern = "^ktaus_strata_new_"
+)
 
-# Retrieve the ktaus datasets as a list
 datasets <- mget(dataset_names)
 
-# Merge the datasets
-ktaus_all <- bind_rows(datasets)
+ktaus_strata_all <- dplyr::bind_rows(
+  datasets
+)
 
-# keep_rel_pairs output
-# Retrieve the results datasets as a list
-dataset_names <- ls(pattern = "^keep_rel_pairs_new_")
+dataset_names <- ls(
+  pattern = "^all_ktaus_new_"
+)
 
-# Retrieve the ktaus datasets as a list
 datasets <- mget(dataset_names)
 
-
+ktaus_all <- dplyr::bind_rows(datasets)

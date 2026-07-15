@@ -1,5 +1,7 @@
 
-cd "[enter data directory]" //MRIP data stored here
+
+***USER EDIT HERE***
+cd "[enter data directory]" // MRIP data stored here
 
 /*
 Required input datasets:

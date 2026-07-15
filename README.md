@@ -81,14 +81,16 @@ Scripts:
 
 Inputs:
 
--   `trip_{1982,…,2022}{1,…,6}.dta`
--   `catch_{1982,…,2022}{1,…,6}.dta`
--   `ma_site_list_updated_SS.xlsx`
+-   `trip_{1982,…,2022}{1,…,6}.dta`: Publicly available from NOAA
+    Fisheries (link above)
+-   `catch_{1982,…,2022}{1,…,6}.dta`: Publicly available from NOAA
+    Fisheries (link above)
+-   `ma_site_list_updated_SS.xlsx`: archived in `data`
 
 Outputs:
 
--   `directed trips and regulations 2010_2020_disaggregated.csv`
--   `cod_hadd_catch_data_1_15.dta`
+-   `directed trips and regulations 2010_2020_disaggregated.csv`: archived in `data`
+-   `cod_hadd_catch_data_1_15.dta`: archived in `data`
 
 ### 2. `compile historical and projected bottom temperatures`
 
@@ -102,20 +104,21 @@ Scripts:
 
 Inputs:
 
--   shapefiles in `data/Stock_areas`
--   `VTR_convex_hull.gpkg` in `data/derived_shapefiles` (for downstream
-    steps)
--   `bottom_temp_combined_product_1959_2022_soe.nc`
+-   stock area shapefiles: archived `data/Stock_areas`
+-   `VTR_convex_hull.gpkg`: archived in `data/derived_shapefiles` (for
+    downstream steps)
+-   `bottom_temp_combined_product_1959_2022_soe.nc`: archived in `data`
 -   `CM2.6_2xCO2_USNES_bottom_temp_delta_monthly_years_1_40.nc`
-    (projected deltas)
+    (projected deltas): archived in `data`
 -   `CM2.6_2xCO2_USNES_bottom_temp_delta_monthly_years_41_80.nc`
-    (projected deltas)
+    (projected deltas): archived in `data`
 
 Outputs:
 
--   `VTR_convex_hull.gpkg`
--   `hist_daily_bt_tmps_agg_GoM.xlsx`
--   `mean_bottom_temp_deltas_GOM_convex_hull_yrs_1_80.xlsx`
+-   `VTR_convex_hull.gpkg`: archived in `data/derived_shapefiles`
+-   `hist_daily_bt_tmps_agg_GoM.xlsx`: archived in `data`
+-   `mean_bottom_temp_deltas_GOM_convex_hull_yrs_1_80.xlsx`: archived in
+    `data`
 
 ### 3. `climatology and projection bias correction`
 
@@ -127,11 +130,12 @@ Scripts:
 
 Inputs:
 
--   `hist_daily_bt_tmps_agg_GoM.xlsx`
+-   `hist_daily_bt_tmps_agg_GoM.xlsx`: archived in `data`
 
 Outputs:
 
--   `decadal_bottom_temp_distributions_levels_3_12_2025.xlsx`
+-   `decadal_bottom_temp_distributions_levels_3_12_2025.xlsx`: archived
+    in `data`
 
 ### 4. `catch-per-trip regressions`
 
@@ -145,18 +149,20 @@ Scripts:
 
 Inputs:
 
--   `hist_daily_bt_tmps_agg_GoM.xlsx`
--   `SSB_WGOM cod 2023 RT sel3ahl Run.xlsx`
--   `cod_hadd_catch_data_1_15.dta`
--   `stock_cod_haddock.dta`
+-   `hist_daily_bt_tmps_agg_GoM.xlsx`: archived in `data`
+-   `SSB_WGOM cod 2023 RT sel3ahl Run.xlsx`: archived in `data`
+-   `cod_hadd_catch_data_1_15.dta`: archived in `data`
+-   `stock_cod_haddock.dta`: archived in `data`
 
 Outputs:
 
--   `parameters_SUEST_April4_2025_area{1,2}newmode{2,3}.xlsx`
--   `sigma_SUEST_April4_2025_area{1,2}newmode{2,3}.xlsx`
--   `residuals_April4_area{1,2}newmode{2,3}cod.txt`
--   `residuals_April4_area{1,2}newmode{2,3}haddock.txt`
--   `Cod_Haddock_catch_Regression_Tobit2_results_April4_2025.dta`
+-   `parameters_SUEST_April4_2025_area1newmode{2,3}.xlsx`: archived in `data`
+-   `parameters_SUEST_April4_2025_area2.xlsx`: archived in `data`
+-   `sigma_SUEST_April4_2025_area1newmode{2,3}.xlsx`: archived in `data`
+-   `sigma_SUEST_April4_2025_area2.xlsx`: archived in `data`
+-   `residuals_April4_area{1,2}newmode{2,3}cod.txt`: archived in `data`
+-   `residuals_April4_area{1,2}newmode{2,3}haddock.txt`: archived in `data`
+-   `Cod_Haddock_catch_Regression_Tobit2_results_April4_2025.dta`: archived in `data`
 
 ### 5. `copula estimation and catch-per-trip projection`
 
@@ -202,15 +208,15 @@ Scripts:
 
 Inputs:
 
--   `cod_hadd_catch_data_1_15.dta`
--   `directed trips and regulations 2010_2020_disaggregated.csv`
--   `correlated_sample_{Clayton,Frank,Gumbel,Plackett,Gaussian}_area{1,2}_newmode{2,3}_{2019,2020,2021}.csv`
+-   `cod_hadd_catch_data_1_15.dta`: archived in `data`
+-   `directed trips and regulations 2010_2020_disaggregated.csv`: archived in `data`
+-   `correlated_sample_{Clayton,Frank,Gumbel,Plackett,Gaussian}_area{1,2}_newmode{2,3}_{2019,2020,2021}.csv`: archived in `copula_simulated_catch/data`
 
 Outputs:
 
--   `cod_hadd_catch_data_1_15_yr{2019,2020,2021}.dta`
--   `calib_catch_yr{2019,2020,2021}_draw{1,…100}.csv`
--   `projection_catch_draw{1,…100}_{2019,2020,2021}.csv`
+-   `cod_hadd_catch_data_1_15_yr{2019,2020,2021}.dta`: not archived
+-   `calib_catch_yr{2019,2020,2021}_draw{1,…100}.csv`: not archived
+-   `projection_catch_draw{1,…100}_{2019,2020,2021}.csv`: not archived
 
 ### 7. `angler survey and choice experiment analysis`
 
@@ -223,13 +229,15 @@ Scripts:
 
 -   `Survey_data_analysis_NC.do`
 
-Inputs: - `narfs_ne_conjoint_weighted.dta` (pending NOAA-NMFS review;
-request from
-[sabrina.lovell\@noaa.gov](mailto:sabrina.lovell@noaa.gov){.email}) -
-`narfs_ne_conjoint_weighted_V3.dta` (pending NOAA-NMFS review; request
-from
-[sabrina.lovell\@noaa.gov](mailto:sabrina.lovell@noaa.gov){.email}) -
-`trip_attributes.xlsx`
+Inputs:
+
+-   `narfs_ne_conjoint_weighted.dta` (pending NOAA-NMFS review; request
+    from
+    [sabrina.lovell\@noaa.gov](mailto:sabrina.lovell@noaa.gov){.email})
+-   `narfs_ne_conjoint_weighted_V3.dta` (pending NOAA-NMFS review;
+    request from
+    [sabrina.lovell\@noaa.gov](mailto:sabrina.lovell@noaa.gov){.email})
+-   `CE_trip_attributes.xlsx`
 
 Outputs:
 

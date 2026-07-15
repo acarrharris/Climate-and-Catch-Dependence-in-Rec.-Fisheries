@@ -1,10 +1,4 @@
-# load packages 
-#pkgs_to_use <- c( "sf", "ncdf4", "raster","rasterVis", "RColorBrewer" , "chron", "lattice", "rlist", "data.table", 
-#                 "rlang","foreign","tidyverse", "sp",  "here", "scales", "stringi", "ggplot2", "tigris",
- #                "dplyr", "writexl", "readxl","mapview","geosphere",  "terra", "maps", "spatialEco", "WriteXLS", 
-  #               "rnaturalearth", "rnaturalearthdata")
-#install.packages(setdiff(pkgs_to_use, rownames(installed.packages())))  
-#lapply(pkgs_to_use, library, character.only = TRUE, quietly = TRUE)
+
 options(scipen=999)
 
 library(ggplot2)
@@ -17,8 +11,9 @@ library(writexl)
 library(readxl)
 
 
-#set directory which holds all the data
-cd <-"/data"
+# USER EDIT HERE #
+cd <- "[enter data directory]"
+
 
 #Pull in east coast map
 
@@ -294,7 +289,7 @@ second_half<-read_excel(paste0(cd,"mean_bottom_temp_deltas_GOM_convex_hull_yrs_4
 full_data<-rbind(first_half, second_half)
 
 # FINAL OUTPUT DATASET
-write_xlsx(full_data,paste0("/results","mean_bottom_temp_deltas_GOM_convex_hull_yrs_1_80.xlsx"))
+write_xlsx(full_data,paste0(cd,"mean_bottom_temp_deltas_GOM_convex_hull_yrs_1_80.xlsx"))
 
 ggplot(full_data)+aes(x=month,y=mean_temp)+geom_line()
 

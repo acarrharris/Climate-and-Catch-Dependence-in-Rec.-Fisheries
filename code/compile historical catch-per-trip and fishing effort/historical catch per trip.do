@@ -1,4 +1,5 @@
-/* This is a file that produces a dataset that contains #of fish encountered per trip.
+
+/* This code produces a dataset that contains # of fish encountered per trip.
 
 This is a template program for estimating catch frequecies
 using the MRIP public-use datasets.
@@ -23,10 +24,8 @@ clear matrix
 set maxvar 100000  
 version 12.1
 
-clear
-cd "[enter data directory]" //data stored here
-
-clear
+***USER EDIT HERE***
+cd "[enter data directory]" // MRIP data stored here
 
 mata: mata clear
 

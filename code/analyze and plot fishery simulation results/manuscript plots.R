@@ -63,7 +63,7 @@ temp_plot <- ggplot(projection_temps, aes(month, mean_temp)) +
 
 temp_plot
 
-ggsave(paste0("C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/figures/projection_temps_July1.jpg"), plot = temp_plot, width = 8, height = 5, units = "in")
+ggsave(paste0("C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/figures/projection_temps_July1.eps"), plot = temp_plot, width = 8, height = 5, units = "in")
 
 ####
 
@@ -498,7 +498,7 @@ final_plot <- (p1 / p2 / p3 / p4) +
 
 final_plot
 #ggsave(paste0("C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/figures/havest_cv_plot", y,"_updated_2-17-26_.jpg"), plot = final_plot, width = 12, height = 8, units = "in")
-ggsave(paste0("C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/figures/havest_cv_plot", y,"_updated_7-1-26_.jpg"), plot = final_plot, width = 12, height = 8, units = "in")
+ggsave(paste0("C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/figures/havest_cv_plot", y,"_updated_7-1-26_.eps"), plot = final_plot, width = 12, height = 8, units = "in")
 
 
 #plot 2 
@@ -621,7 +621,7 @@ final_plot
 
 #ggsave(paste0("C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/figures/ktau_plot", y,".jpg"), plot = final_plot, width = 12, height = 8, units = "in")
 #ggsave(paste0("C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/figures/ktau_plot_", y,"_updated_2-17-26_.jpg"), plot = final_plot, width = 12, height = 8, units = "in")
-ggsave(paste0("C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/figures/ktau_plot_", y,"_updated_7-1-26_.jpg"), plot = final_plot, width = 12, height = 8, units = "in")
+ggsave(paste0("C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/figures/ktau_plot_", y,"_updated_7-1-26_.eps"), plot = final_plot, width = 12, height = 8, units = "in")
 
 }
 
@@ -906,7 +906,7 @@ final_plot_mode
 #ggsave(paste0("C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/figures/cv_by_mode_allyears_updated_2-17-26.jpg"), plot = final_plot, width = 12, height = 8, units = "in")
 #ggsave(paste0("C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/figures/cv_by_mode_allyears_updated_7-1-26.jpg"), plot = final_plot, width = 12, height = 8, units = "in")
 ggsave(
-  paste0("C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/figures/", "cv_by_mode_allyears_updated_7-1-26.jpg"),
+  paste0("C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/figures/", "cv_by_mode_allyears_updated_7-1-26.eps"),
   plot = final_plot_mode,
   width = 12,
   height = 8,
@@ -1128,7 +1128,7 @@ final_plot_state
 
 #ggsave(paste0("C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/figures/cv_by_state_allyears_updated_2-17-26.jpg"), plot = final_plot, width = 12, height = 8, units = "in")
 ggsave(
-  paste0("C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/figures/cv_by_state_allyears_updated_7-1-26.jpg"),
+  paste0("C:/Users/andrew.carr-harris/Desktop/Git/welfare-model-GoM/newest_version/output_data/figures/cv_by_state_allyears_updated_7-1-26.eps"),
   plot = final_plot_state,
   width = 12,
   height = 8,

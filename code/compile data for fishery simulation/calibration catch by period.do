@@ -1,10 +1,12 @@
 
 
 * For each baseline year, create 100 datasets of baseline-year catch-per-trip by randomly sampling a subset of the observed data
+* These data are used to calibrate the simulation model 
 
-* These data set will be used to calibrate the simulation model 
 
+***USER EDIT HERE***
 cd "[enter data directory]" //data stored here
+
 
 local yrs 2019 2020 2021
 foreach y of local yrs{

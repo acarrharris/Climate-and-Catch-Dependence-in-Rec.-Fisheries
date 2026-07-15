@@ -1,9 +1,14 @@
 
-* create a dataset of catch draws for each future decade to be used in the simulation model
+
+* create datasets of projected catch-per-trip for each future decade 
+* throughout the code, some intermediate datasets are saved
+
+***USER EDIT HERE***
+cd "[enter data directory]" //non-copula-simulated catch data stored here
+global copula_data_cd "C:\Users\andrew.carr-harris\Desktop\Git\Climate-and-Catch-Dependence-in-Rec.-Fisheries\data\copula_simulated_catch" //copula-simulated data stored here
 
 * Identify the range of observed catch-per-trip in order to truncate projected catch-per-trip to within that range
-
-cd "[enter data directory]" //data stored here
+u "cod_hadd_catch_data_1_15.dta", clear 
 su tot_cat_cod //max 156
 su tot_cat_hadd //max 77
 
@@ -21,7 +26,7 @@ foreach s of local list{
 
 local y 2021
 
-import delimited  "`s'_`y'.csv", clear
+import delimited  "$copula_data_cd\`s'_`y'.csv", clear
 sort decade month 
 gen state=25 if ma==1
 replace state=23 if me==1
@@ -75,42 +80,42 @@ drop source
 renvarlab, lower
 compress
 
-save `file'.dta, replace
+save "$copula_data_cd\`file'".dta, replace
 
 }
 
-u "Clayton_1_2.dta", clear 
-append using "Clayton_2_2.dta"
-append using "Clayton_1_3.dta"
-append using "Clayton_2_3.dta"
+u "$copula_data_cd\Clayton_1_2.dta", clear 
+append using "$copula_data_cd\Clayton_2_2.dta"
+append using "$copula_data_cd\Clayton_1_3.dta"
+append using "$copula_data_cd\Clayton_2_3.dta"
 tempfile clayton
 save `clayton', replace 
 
-u "Frank_1_2.dta", clear 
-append using "Frank_2_2.dta"
-append using "Frank_1_3.dta"
-append using "Frank_2_3.dta"
+u "$copula_data_cd\Frank_1_2.dta", clear 
+append using "$copula_data_cd\Frank_2_2.dta"
+append using "$copula_data_cd\Frank_1_3.dta"
+append using "$copula_data_cd\Frank_2_3.dta"
 tempfile Frank
 save `Frank', replace 
 
-u "Gaussian_1_2.dta", clear 
-append using "Gaussian_2_2.dta"
-append using "Gaussian_1_3.dta"
-append using "Gaussian_2_3.dta"
+u "$copula_data_cd\Gaussian_1_2.dta", clear 
+append using "$copula_data_cd\Gaussian_2_2.dta"
+append using "$copula_data_cd\Gaussian_1_3.dta"
+append using "$copula_data_cd\Gaussian_2_3.dta"
 tempfile Gaussian
 save `Gaussian', replace 
 
-u "Plackett_1_2.dta", clear 
-append using "Plackett_2_2.dta"
-append using "Plackett_1_3.dta"
-append using "Plackett_2_3.dta"
+u "$copula_data_cd\Plackett_1_2.dta", clear 
+append using "$copula_data_cd\Plackett_2_2.dta"
+append using "$copula_data_cd\Plackett_1_3.dta"
+append using "$copula_data_cd\Plackett_2_3.dta"
 tempfile Plackett
 save `Plackett', replace 
 
-u "Gumbel_1_2.dta", clear 
-append using "Gumbel_2_2.dta"
-append using "Gumbel_1_3.dta"
-append using "Gumbel_2_3.dta"
+u "$copula_data_cd\Gumbel_1_2.dta", clear 
+append using "$copula_data_cd\Gumbel_2_2.dta"
+append using "$copula_data_cd\Gumbel_1_3.dta"
+append using "$copula_data_cd\Gumbel_2_3.dta"
 
 merge 1:1 month decade n  mode state area using `Plackett', nogen 
 merge 1:1 month decade n  mode state area using `clayton', nogen 
@@ -118,7 +123,7 @@ merge 1:1 month decade n  mode state area using `Gaussian', nogen
 merge 1:1 month decade n  mode state area using `Frank', nogen 
 order decade month mode state area n
 
-save "projection_catch_base.dta", replace
+save "$copula_data_cd\projection_catch_base.dta", replace
 
 
 reshape wide cod* had*, i(month mode n state area) j(decade)
@@ -130,7 +135,7 @@ rename st state
 rename mode mode1
 rename month month1
 
-save "projection_catch_base_wide.dta", replace
+save "$copula_data_cd\projection_catch_base_wide.dta", replace
 
 
 global drawz
@@ -183,7 +188,7 @@ foreach d of local doms{
 	levelsof area, local(areaz) clean
 	levelsof state, local(stz) clean
 
-	use  "projection_catch_base_wide.dta", clear  
+	use  "$copula_data_cd\projection_catch_base_wide.dta", clear  
 
 	keep if month1==`mon'
 	keep if mode1=="`md'"
@@ -275,7 +280,7 @@ foreach s of local list{
 
 local y 2020
 
-import delimited  "`s'_`y'.csv", clear
+import delimited  "$copula_data_cd\`s'_`y'.csv", clear
 sort decade month 
 gen state=25 if ma==1
 replace state=23 if me==1
@@ -327,42 +332,42 @@ drop source
 renvarlab, lower
 compress
 
-save `file'.dta, replace
+save "$copula_data_cd\`file'".dta, replace
 
 }
 
-u "Clayton_1_2.dta", clear 
-append using "Clayton_2_2.dta"
-append using "Clayton_1_3.dta"
-append using "Clayton_2_3.dta"
+u "$copula_data_cd\Clayton_1_2.dta", clear 
+append using "$copula_data_cd\Clayton_2_2.dta"
+append using "$copula_data_cd\Clayton_1_3.dta"
+append using "$copula_data_cd\Clayton_2_3.dta"
 tempfile clayton
 save `clayton', replace 
 
-u "Frank_1_2.dta", clear 
-append using "Frank_2_2.dta"
-append using "Frank_1_3.dta"
-append using "Frank_2_3.dta"
+u "$copula_data_cd\Frank_1_2.dta", clear 
+append using "$copula_data_cd\Frank_2_2.dta"
+append using "$copula_data_cd\Frank_1_3.dta"
+append using "$copula_data_cd\Frank_2_3.dta"
 tempfile Frank
 save `Frank', replace 
 
-u "Gaussian_1_2.dta", clear 
-append using "Gaussian_2_2.dta"
-append using "Gaussian_1_3.dta"
-append using "Gaussian_2_3.dta"
+u "$copula_data_cd\Gaussian_1_2.dta", clear 
+append using "$copula_data_cd\Gaussian_2_2.dta"
+append using "$copula_data_cd\Gaussian_1_3.dta"
+append using "$copula_data_cd\Gaussian_2_3.dta"
 tempfile Gaussian
 save `Gaussian', replace 
 
-u "Plackett_1_2.dta", clear 
-append using "Plackett_2_2.dta"
-append using "Plackett_1_3.dta"
-append using "Plackett_2_3.dta"
+u "$copula_data_cd\Plackett_1_2.dta", clear 
+append using "$copula_data_cd\Plackett_2_2.dta"
+append using "$copula_data_cd\Plackett_1_3.dta"
+append using "$copula_data_cd\Plackett_2_3.dta"
 tempfile Plackett
 save `Plackett', replace 
 
-u "Gumbel_1_2.dta", clear 
-append using "Gumbel_2_2.dta"
-append using "Gumbel_1_3.dta"
-append using "Gumbel_2_3.dta"
+u "$copula_data_cd\Gumbel_1_2.dta", clear 
+append using "$copula_data_cd\Gumbel_2_2.dta"
+append using "$copula_data_cd\Gumbel_1_3.dta"
+append using "$copula_data_cd\Gumbel_2_3.dta"
 
 merge 1:1 month decade n  mode state area using `Plackett', nogen 
 merge 1:1 month decade n  mode state area using `clayton', nogen 
@@ -370,7 +375,7 @@ merge 1:1 month decade n  mode state area using `Gaussian', nogen
 merge 1:1 month decade n  mode state area using `Frank', nogen 
 order decade month mode state area n
 
-save "projection_catch_base.dta", replace
+save "$copula_data_cd\projection_catch_base.dta", replace
 
 reshape wide cod* had*, i(month mode n state area) j(decade)
 gen st="MA" if state==25
@@ -381,7 +386,7 @@ rename st state
 rename mode mode1
 rename month month1
 
-save "projection_catch_base_wide.dta", replace
+save "$copula_data_cd\projection_catch_base_wide.dta", replace
 
 global drawz
 forv i=1/100{
@@ -435,7 +440,7 @@ foreach d of local doms{
 	levelsof area, local(areaz) clean
 	levelsof state, local(stz) clean
 
-	use  "projection_catch_base_wide.dta", clear  
+	use  "$copula_data_cd\projection_catch_base_wide.dta", clear  
 	
 
 	keep if month1==`mon'
@@ -530,7 +535,7 @@ foreach s of local list{
 
 local y 2019
 
-import delimited  "`s'_`y'.csv", clear
+import delimited  "$copula_data_cd\`s'_`y'.csv", clear
 sort decade month 
 gen state=25 if ma==1
 replace state=23 if me==1
@@ -587,45 +592,45 @@ save `file'.dta, replace
 
 }
 
-u "Clayton_1_2.dta", clear 
-append using "Clayton_2_2.dta"
-append using "Clayton_1_3.dta"
-append using "Clayton_2_3.dta"
+u "$copula_data_cd\Clayton_1_2.dta", clear 
+append using "$copula_data_cd\Clayton_2_2.dta"
+append using "$copula_data_cd\Clayton_1_3.dta"
+append using "$copula_data_cd\Clayton_2_3.dta"
 tempfile clayton
 save `clayton', replace 
 
-u "Frank_1_2.dta", clear 
-append using "Frank_2_2.dta"
-append using "Frank_1_3.dta"
-append using "Frank_2_3.dta"
+u "$copula_data_cd\Frank_1_2.dta", clear 
+append using "$copula_data_cd\Frank_2_2.dta"
+append using "$copula_data_cd\Frank_1_3.dta"
+append using "$copula_data_cd\Frank_2_3.dta"
 tempfile Frank
 save `Frank', replace 
 
-u "Gaussian_1_2.dta", clear 
-append using "Gaussian_2_2.dta"
-append using "Gaussian_1_3.dta"
-append using "Gaussian_2_3.dta"
+u "$copula_data_cd\Gaussian_1_2.dta", clear 
+append using "$copula_data_cd\Gaussian_2_2.dta"
+append using "$copula_data_cd\Gaussian_1_3.dta"
+append using "$copula_data_cd\Gaussian_2_3.dta"
 tempfile Gaussian
 save `Gaussian', replace 
 
-u "Plackett_1_2.dta", clear 
-append using "Plackett_2_2.dta"
-append using "Plackett_1_3.dta"
-append using "Plackett_2_3.dta"
+u "$copula_data_cd\Plackett_1_2.dta", clear 
+append using "$copula_data_cd\Plackett_2_2.dta"
+append using "$copula_data_cd\Plackett_1_3.dta"
+append using "$copula_data_cd\Plackett_2_3.dta"
 tempfile Plackett
 save `Plackett', replace 
 
-u "Gumbel_1_2.dta", clear 
-append using "Gumbel_2_2.dta"
-append using "Gumbel_1_3.dta"
-append using "Gumbel_2_3.dta"
+u "$copula_data_cd\Gumbel_1_2.dta", clear 
+append using "$copula_data_cd\Gumbel_2_2.dta"
+append using "$copula_data_cd\Gumbel_1_3.dta"
+append using "$copula_data_cd\Gumbel_2_3.dta"
 merge 1:1 month decade n  mode state area using `Plackett', nogen 
 merge 1:1 month decade n  mode state area using `clayton', nogen 
 merge 1:1 month decade n  mode state area using `Gaussian', nogen 
 merge 1:1 month decade n  mode state area using `Frank', nogen 
 order decade month mode state area n
 
-save "projection_catch_base.dta", replace
+save "$copula_data_cd\projection_catch_base.dta", replace
 
 reshape wide cod* had*, i(month mode n state area) j(decade)
 gen st="MA" if state==25
@@ -636,7 +641,7 @@ rename st state
 rename mode mode1
 rename month month1
 
-save "projection_catch_base_wide.dta", replace
+save "$copula_data_cd\projection_catch_base_wide.dta", replace
 
 
 global drawz
@@ -689,7 +694,7 @@ foreach d of local doms{
 	levelsof area, local(areaz) clean
 	levelsof state, local(stz) clean
 
-	use  "projection_catch_base_wide.dta", clear  
+	use  "$copula_data_cd\projection_catch_base_wide.dta", clear  
 	
 
 	keep if month1==`mon'

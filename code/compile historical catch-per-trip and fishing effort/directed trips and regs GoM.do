@@ -2,7 +2,8 @@
 
 *Generate a dataset of directed trips and regulations for GoM cod and haddock 2010-2019 using MRIP public-use datasets
 
-cd "[enter data directory]" //data stored here
+***USER EDIT HERE***
+cd "[enter data directory]" // data stored here
 
 local yearz 2019 2020 2021
 local statez 23 33 25

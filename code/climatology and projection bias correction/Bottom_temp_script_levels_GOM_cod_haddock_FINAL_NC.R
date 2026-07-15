@@ -17,7 +17,9 @@ library(lubridate)
 #https://onlinelibrary.wiley.com/doi/pdf/10.1002/2015JC011346 3) Generating log-normal
 # random distributions for all decades in the 80 prediction time horizon
 
-cd <-"[enter data directory]" 
+
+# USER EDIT HERE #
+cd <- "[enter data directory]"
 
 climatology_years <- c(1991:2021)
 

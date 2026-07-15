@@ -16,16 +16,21 @@ set maxvar 120000
 /********************************************************************
 Paths + inputs
 ********************************************************************/
-local projdir "C:\Users\andrew.carr-harris\Dropbox\NMFS\survey_data\narfs_ne_conjoint_weighted_V2"
-local outputdir "C:\Users\andrew.carr-harris\Desktop\Git\welfare-model-GoM\newest_version\output_data\figures"
 
-local dta_main "`projdir'\narfs_ne_conjoint_weighted.dta"  //confidential data pending NOAA review; see README.md for details
-local dta_partials "`projdir'\narfs_ne_conjoint_weighted_V3.dta"  //confidential data pending NOAA review; see README.md for details
-local xlsx_trips "`projdir'\trip_attributes.xlsx"
-local out_params "`projdir'\cod_parameters.csv"
+****USER EDIT HERE****
 
-cd "`projdir'"
-use "`dta_main'", clear
+global projdir "C:\Users\andrew.carr-harris\Dropbox\NMFS\survey_data\narfs_ne_conjoint_weighted_V2" // path to where survey data is stored
+global outputdir "C:\Users\andrew.carr-harris\Desktop\Git\welfare-model-GoM\newest_version\output_data\figures" // path to where output figures are stored
+
+****END USER EDIT HERE****
+
+global dta_main "$projdir\narfs_ne_conjoint_weighted.dta"  //confidential data pending NOAA review; see README.md for details
+global dta_partials "$projdir\narfs_ne_conjoint_weighted_V3.dta"  //confidential data pending NOAA review; see README.md for details
+global xlsx_trips "$projdir\CE_trip_attributes.xlsx"
+global out_params "$projdir\cod_parameters.csv"
+
+cd "$projdir"
+use "$dta_main", clear
 
 /********************************************************************
 1) NON-CE DATA CLEANUP (decode/split labels; append partials; recodes)
@@ -91,7 +96,7 @@ drop if dispo=="B"
 save `base', replace
 
 preserve
-use "`dta_partials'", clear
+use "$dta_partials", clear
 keep if dispo=="B"
 gen byte partial = 1
 save `partials', replace
@@ -222,7 +227,7 @@ forvalues i=1/6 {
 tempfile choices
 save `choices', replace
 
-import excel using "`xlsx_trips'", clear firstrow
+import excel using "$xlsx_trips", clear firstrow
 rename block ver
 tempfile trips
 save `trips', replace
@@ -486,7 +491,7 @@ local n_choices2 = r(ndistinct)
 estadd local n_anglers "`n_anglers2'"
 estadd local n_choices "`n_choices2'"
 
-esttab m1 m2 using "`out_params'", replace nobase noomitted ///
+esttab m1 m2 using "$out_params", replace nobase noomitted ///
     stats(n_anglers n_choices ll r2_p aic, fmt(0 0 3 3 3)) ///
     se b(%9.3f) label nogaps starlevels(* 0.10 ** 0.05 *** 0.01) ///
     order(sqrtckp sqrthkp sqrt_CH_keep sqrtcrl sqrthrl cost nofish)
@@ -500,7 +505,7 @@ keep if e(sample)
 keep masterid likely_to_fish fish_pref_more
 duplicates drop
 gen id_export = _n
-export delimited using "`projdir'\angler_CE_demographics.csv", replace
+export delimited using "$projdir\angler_CE_demographics.csv", replace
 restore
 
 		
@@ -572,20 +577,14 @@ mat iid_err=J(`K',1,0)
 clear
 dsconcat $params
 
+save "$projdir\k_r_draws.dta", replace
 
-local projdir "C:\Users\andrew.carr-harris\Dropbox\NMFS\survey_data\narfs_ne_conjoint_weighted_V2"
-save "`projdir'\k_r_draws.dta", replace
-
-
-
-local outputdir "C:\Users\andrew.carr-harris\Desktop\Git\welfare-model-GoM\newest_version\output_data\figures"
-local projdir "C:\Users\andrew.carr-harris\Dropbox\NMFS\survey_data\narfs_ne_conjoint_weighted_V2"
 
 *Cod WTP 
 global wtp
 
 forv i=0/30{
-	u "`projdir'\k_r_draws.dta", clear 
+	u "$projdir\k_r_draws.dta", clear 
 	keep wtp_cod_keep_hadd`i'
 	
 	su wtp_cod_keep_hadd`i', d
@@ -631,18 +630,15 @@ twoway (rcap upper lower wtp_n_secondary if wtp_n_secondary<=15, lcolor(black)) 
 			 yline(0, lcolor(gs12) lpattern(dash)) legend(off) name(cod_mwtp, replace) ///
 			 title("Willingness-to-pay for first cod harvested", size(medium)))
 
-local outputdir "C:\Users\andrew.carr-harris\Desktop\Git\welfare-model-GoM\newest_version\output_data\figures"
-graph export "`outputdir'/mwtp_cod_updated_7_2_26.eps", as(eps) replace
+graph export "$outputdir/mwtp_cod_updated_7_2_26.eps", as(eps) replace
 
 
 
 *Hadd WTP 
-local projdir "C:\Users\andrew.carr-harris\Dropbox\NMFS\survey_data\narfs_ne_conjoint_weighted_V2"
-
 global wtp
 
 forv i=0/30{
-	u "`projdir'\k_r_draws.dta", clear 
+	u "$projdir\k_r_draws.dta", clear 
 	keep wtp_hadd_keep_cod`i'
 	
 	su wtp_hadd_keep_cod`i', d
@@ -688,5 +684,4 @@ twoway (rcap upper lower wtp_n_secondary if wtp_n_secondary<=15, lcolor(black)) 
 			 yline(0, lcolor(gs12)  lpattern(dash)) legend(off) name(hadd_mwtp, replace) ///
 			 title("Willingness-to-pay for first haddock harvested", size(medium)) ylab(-50(50)150))
 			 
-local outputdir "C:\Users\andrew.carr-harris\Desktop\Git\welfare-model-GoM\newest_version\output_data\figures"
-graph export "`outputdir'/mwtp_hadd_updated_7_2_26.eps", as(eps) replace
+graph export "$outputdir/mwtp_hadd_updated_7_2_26.eps", as(eps) replace
