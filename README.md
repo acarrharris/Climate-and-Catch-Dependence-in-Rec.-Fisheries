@@ -59,7 +59,7 @@ Inputs:
 Outputs:
 
 -   `directed trips and regulations 2010_2020_disaggregated.csv`: archived in `data`
--   `cod_hadd_catch_data_1_15.dta`: not archived
+-   `cod_hadd_catch_data.dta`: not archived
 
 ### 2. `compile historical and projected bottom temperatures`
 
@@ -98,7 +98,7 @@ Inputs:
 
 Outputs:
 
--   `decadal_bottom_temp_distributions_levels_3_12_2025.xlsx`: archived in `data`
+-   `decadal_bottom_temp_distributions_levels.xlsx`: archived in `data`
 
 ### 4. `catch-per-trip regressions`
 
@@ -112,18 +112,17 @@ Inputs:
 
 -   `hist_daily_bt_tmps_agg_GoM.xlsx`: archived in `data`
 -   `SSB_WGOM cod 2023 RT sel3ahl Run.xlsx`: archived in `data`
--   `cod_hadd_catch_data_1_15.dta`: not archived
+-   `cod_hadd_catch_data.dta`: not archived
 -   `stock_cod_haddock.dta`: archived in `data`
 
 Outputs:
 
--   `parameters_SUEST_April4_2025_area1newmode{2,3}.xlsx`: archived in `data`
--   `parameters_SUEST_April4_2025_area2.xlsx`: archived in `data`
--   `sigma_SUEST_April4_2025_area1newmode{2,3}.xlsx`: archived in `data`
--   `sigma_SUEST_April4_2025_area2.xlsx`: archived in `data`
--   `residuals_April4_area{1,2}newmode{2,3}cod.txt`: archived in `data`
--   `residuals_April4_area{1,2}newmode{2,3}haddock.txt`: archived in `data`
--   `Cod_Haddock_catch_Regression_Tobit2_results_April4_2025.dta`: archived in `data`
+-   `parameters_SUEST_area1newmode{2,3}.xlsx`: archived in `data`
+-   `parameters_SUEST_area2.xlsx`: archived in `data`
+-   `sigma_SUEST_area1newmode{2,3}.xlsx`: archived in `data`
+-   `sigma_SUEST_area2.xlsx`: archived in `data`
+-   `residuals_area{1,2}newmode{2,3}_{cod,haddock}.txt`: archived in `data`
+-   `cod_haddock_catch_regression_tobit2_results.dta`: archived in `data`
 
 ### 5. `copula estimation and catch-per-trip projection`
 
@@ -134,19 +133,20 @@ Requires MATLAB Patton copula toolbox functions included in the repository.
 Scripts:
 
 -   `distribution_ff12.do`
--   `correlated_catch_per_trip_Area*_Newmode*_*.m`
+-   `correlated_catch_per_trip_Area{1,2}_Newmode{2,3}_{2019,2020,2021}.m`
 
 Inputs:
 
--   `Cod_Haddock_catch_Regression_Tobit2_results_April4_2025.dta`
--   `decadal_bottom_temp_distributions_levels_3_12_2025.xlsx`
--   `parameters_SUEST_April4_2025_area{1,2}newmode{2,3}.xlsx`
--   `sigma_SUEST_April4_2025_area{1,2}newmode{2,3}.xlsx`
--   `residuals_April4_area{1,2}newmode{2,3}cod.txt`
--   `residuals_April4_area{1,2}newmode{2,3}haddock.txt`
--   `normalized_ssb.xlsx`
--   `ffdays12_area{1,2}_{2019,2020,2021}.xlsx`
--   Patton copula toolbox functions (included in folder; must be on MATLAB path)
+-   `cod_haddock_catch_regression_tobit2_results.dta`: archived in `catch_regression_tobit2_results/data`
+-   `decadal_bottom_temperature_distributions.xlsx`
+-   `parameters_SUEST_area1newmode{2,3}.xlsx`: archived in `catch_regression_tobit2_results/data`
+-   `parameters_SUEST_area2.xlsx`: archived in `catch_regression_tobit2_results/data`
+-   `sigma_SUEST_area1newmode{2,3}.xlsx`: archived in `catch_regression_tobit2_results/data`
+-   `sigma_SUEST_area2.xlsx`: archived in `catch_regression_tobit2_results/data`
+-   `residuals_area{1,2}newmode{2,3}_{cod, haddock}.txt`: archived in `catch_regression_tobit2_results/data`
+-   `normalized_ssb.xlsx`: not archived
+-   `ffdays12_area{1,2}_{2019,2020,2021}.xlsx`: not archived
+-   Patton copula toolbox functions: included in repository(must be on the MATLAB path)
 
 Outputs:
 
@@ -163,15 +163,14 @@ Scripts:
 
 Inputs:
 
--   `cod_hadd_catch_data_1_15.dta`: not archived
+-   `cod_hadd_catch_data.dta`: not archived
 -   `directed trips and regulations 2010_2020_disaggregated.csv`: archived in `data`
--   `correlated_sample_{Clayton,Frank,Gumbel,Plackett,Gaussian}_area{1,2}_newmode{2,3}_{2019,2020,2021}.csv`: archived in `copula_simulated_catch/data`
+-   `correlated_sample_{Clayton,Frank,Gumbel,Plackett,Gaussian}_area{1,2}_newmode{2,3}_{2019,2020,2021}.csv`: not archived
 
 Outputs:
 
--   `cod_hadd_catch_data_1_15_yr{2019,2020,2021}.dta`: not archived
--   `calib_catch_yr{2019,2020,2021}_draw{1,…100}.csv`: not archived
--   `projection_catch_draw{1,…100}_{2019,2020,2021}.csv`: not archived
+-   `calib_catch_yr{2019,2020,2021}_draw{1,…,100}.csv`: not archived
+-   `projection_catch_draw{1,…,100}_{2019,2020,2021}.csv`: not archived
 
 ### 7. `angler survey and choice experiment analysis`
 
@@ -189,9 +188,9 @@ Inputs:
 
 Outputs:
 
--   `angler_CE_demographics.csv`
--   `cod_parameters.csv`
--   `k_r_draws.dta`
+-   `angler_CE_demographics.csv`: archived in `data`
+-   `cod_parameters.csv`: archived in `data` (hardcoded in fishery simulation)
+-   Marginal willingness-to-pay figures
 
 ### 8. `angler and angler trip population characteristics`
 
@@ -205,12 +204,12 @@ Scripts:
 Inputs:
 
 -   `atl_states_2017_expsurvey.dta` (pending NOAA-NMFS review; request from [sabrina.lovell\@noaa.gov](mailto:sabrina.lovell@noaa.gov){.email})
--   `Demographics_ME to NC.pdf` (source of hardcoded information)
+-   `Demographics_ME to NC.pdf` (source of hardcoded information): archived in `data`
 
 Outputs:
 
 -   estimated mean trip cost and standard errors (hardcoded in the fishery simulation)
--   `age_distribution_by_state.csv`
+-   `age_distribution_by_state.csv`: archived in `data`
 
 ### 9. `fishery simulation`
 
@@ -241,14 +240,14 @@ Inputs:
 
 Outputs:
 
--   `costs_data_{2019,2020,2021}_draw{1,…,100}.rds`
--   `costs_data_{2019,2020,2021}_draw{1,…,100}_ind.rds`
--   `calibration_data_{2019,2020,2021}_draw{1,…,100}.rds`
--   `calibration_data_{2019,2020,2021}_draw{1,…,100}_ind.rds`
--   `p_star_values_2019_2021_outliers.rds`
--   `p_star_values_2019_2021_ind_outliers.rds`
--   `model_output_y{2019,2020,2021}_outliers_newCV_2-17-26.xlsx`
--   `model_output_y{2019,2020,2021}_outliers_newCV_2-17-26.xlsx`
+-   `costs_data_{2019,2020,2021}_draw{1,…,100}.rds`: intermediate
+-   `costs_data_{2019,2020,2021}_draw{1,…,100}_ind.rds`: intermediate
+-   `calibration_data_{2019,2020,2021}_draw{1,…,100}.rds`: intermediate
+-   `calibration_data_{2019,2020,2021}_draw{1,…,100}_ind.rds`: intermediate
+-   `p_star_values_2019_2021_outliers.rds`: intermediate
+-   `p_star_values_2019_2021_ind_outliers.rds`: intermediate
+-   `model_output_y{2019,2020,2021}_outliers_newCV_2-17-26.xlsx`: intermediate
+-   `model_output_y{2019,2020,2021}_outliers_newCV_2-17-26.xlsx`: intermediate
 -   `ktau_output_y{2019,2020,2021}_outliers_newCV_2-17-26.xlsx`
 -   `ktau_output_y{2019,2020,2021}_outliers_newCV_2-17-26.xlsx`
 -   `model_output_y{2019,2020,2021}_outliers_newCV_2-17-26_close cod and haddock.xlsx`
