@@ -51,3 +51,11 @@ rsconnect/
 # intermediate datasets used for downstream steps
 /work/*
 !/work/README.md
+
+#large datasets
+data/processed/historical_mrip/cod_hadd_catch_data.dta
+
+#figures
+outputs/figures/*.jpg
+outputs/figures/*.eps
+
