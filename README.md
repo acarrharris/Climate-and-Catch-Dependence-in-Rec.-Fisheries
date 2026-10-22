@@ -314,4 +314,30 @@ Checkpoints permit local restart but do not replace the cached cost and calibrat
 
 It also writes `proj_tmps_inshore_offshore.eps`. These are final outputs, not model initialization inputs.
 
+#### Demo data and code
+
+The repository includes demo data to reproduce the 2024 coastwide figures using two precomputed model results files: `model_output_y2024_reformat_coast.rds` and `ktau_output_y2024_reformat_coast.rds`.
+
+To run the demo:
+
+1.  Open `code/09_fishery_simulation/manuscript_plots.R` in R or RStudio. For this demo, replace its directory settings with the following, substituting the local repository path:
+
+    ``` r
+    project_dir <- "C:/path/to/Climate-and-Catch-Dependence-in-Rec.-Fisheries"
+    input_data_cd <- file.path(project_dir, "data", demo_data")
+    input_code_cd <- file.path(project_dir, "code", "09_fishery_simulation")
+    figure_dir <- file.path(project_dir, "outputs", "figures")
+    dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
+    years <- 2024L
+    library(dplyr)
+    ```
+
+2.  In the section headed STATE- AND MODE-LEVEL FIGURES, temporarily change `if (yr==2024)` to `if (FALSE)`.
+
+3.  Run the script from the beginning through the closing brace of the main for (yr in years) loop, immediately before the BOTTOM TEMPERATURE PLOT section. Do not execute the bottom-temperature section for this demo: its temperature CSV is not included.
+
+4.  Inspect the figures in outputs/figures/.
+
+The demo will produce the three coastwide figures in the Results section of the manuscript, each saved as both .jpg and .eps. It will take about two minutes to run.
+
 Note: AI (GPT-5.6 Sol and Claude Opus 5) was used to optimize some of the code in this repository (when indicated in the individual file) and to assist with producing this README.
