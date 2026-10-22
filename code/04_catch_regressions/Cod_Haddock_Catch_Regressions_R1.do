@@ -209,7 +209,7 @@ test [haddock13_lnsigma]_cons  [haddock13_athrho]_cons
 putexcel set "sigma_SUEST_Sept_28_2026_area1newmode3.xlsx", replace
 	putexcel A1 = matrix(e(V)), colnames		
 putexcel set "knots_Sept_28_2026_area1newmode3.xlsx", replace	
-    putexcel A1 = matrix(knots_12), colnames
+    putexcel A1 = matrix(knots_13), colnames
 	
 preserve
     keep if sub13 == 1 & bt_tmp != .
@@ -221,11 +221,11 @@ preserve
 		psu_id var_id ///
 		mean_tmp  mean_ssb_haddock mean_ssb_cod ///
         tot_cat_cod tot_cat_hadd                                               ///
-        pos_cod12 pos_haddock12                                              ///
-        xbv_cod12 xbv_haddock12                                               ///
-        xbs_cod12 xbs_haddock12                                               ///
-        psel_cod12 psel_haddock12                                            ///
-        u_cod12 u_haddock12                                                    ///
+        pos_cod12 pos_haddock13                                              ///
+        xbv_cod12 xbv_haddock13                                               ///
+        xbs_cod12 xbs_haddock13                                               ///
+        psel_cod12 psel_haddock13                                            ///
+        u_cod12 u_haddock13                                                    ///
         using "logresiduals_Sept_28_2026_area1newmode3.csv", replace
 restore
 

@@ -710,7 +710,7 @@ conflicts_prefer(dplyr::summarize)
 conflicts_prefer(dplyr::summarise)
 conflicts_prefer(dplyr::count)
 
-input_data_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/Climate-and-Catch-Dependence-in-Rec.-Fisheries/data/input_data"
+input_data_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/Climate-and-Catch-Dependence-in-Rec.-Fisheries/data/input_data/"
 input_code_cd <- "C:/Users/andrew.carr-harris/Desktop/Git/Climate-and-Catch-Dependence-in-Rec.-Fisheries/code/09_fishery_simulation/"
 proj_catch_cd <- input_data_cd
 results_plot_code_cd <- input_code_cd

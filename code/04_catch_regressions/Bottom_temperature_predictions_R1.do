@@ -5,7 +5,7 @@ global dir_root "C:\Users\andrew.carr-harris\Desktop\Git\Climate-and-Catch-Depen
 global code_root "${dir_root}/code" 
 global process_data_root "${dir_root}/data" // data directory for all other model input and output files.
 
-use "${process_data_root}/decadal_bottom_temp_distributions_levels.dta", clear
+use "${process_data_root}/decadal_bottom_temp_distributions.dta", clear
 
 set seed 31564789
 local NREPL     50   

@@ -63,7 +63,7 @@ baseline <- bottom_temp %>%
 #   as_id("https://docs.google.com/spreadsheets/d/1kjU-W_0LWjrjVflmyp4j0tAzekVcbKJY/edit?usp=share_link&ouid=104786272712659294835&rtpof=true&sd=true"),
 #   path= "bottom_temp_deltas.xlsx", overwrite=TRUE)
 
-bottom_temp_deltas <- readxl::read_excel(file.path(process_data_dir, "mean_btemp_proj_deltas_GOM_by_area.xlsx")) %>%
+bottom_temp_deltas <- readxl::read_excel(file.path(process_data_dir, "mean_btemp_proj_deltas_GoM_by_area.xlsx")) %>%
                         mutate(year=as.numeric(year))
 
 ggplot(bottom_temp_deltas, aes(x=year, y=mean_temp_inshore))+geom_line()+
@@ -191,6 +191,6 @@ ggplot(bottom_temp_distributions_test)+
 
 bottom_temp_distributions <- bottom_temp_distributions[,-1]
 
-write.csv(bottom_temp_distributions,file.path(process_data_dir, "decadal_bottom_temp_distributions_levels.csv"))
+write.csv(bottom_temp_distributions,file.path(process_data_dir, "decadal_bottom_temp_distributions.csv"))
 haven::write_dta(bottom_temp_distributions,file.path(process_data_dir, "decadal_bottom_temp_distributions.dta"))
 

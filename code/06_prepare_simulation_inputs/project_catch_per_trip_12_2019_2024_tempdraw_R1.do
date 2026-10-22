@@ -413,7 +413,7 @@ save "grid_tempdraw_`TAG'_`BASEYR'_`NPASS'", replace
          cell catch_cod catch_had cell_weight copula
     drop if cell_weight == 0
     
-    local outfile "`SAVE_DIR'/`BASEYR'/simulated_catch_tempdraw_`fam'_`TAG'_`BASEYR'"
+    local outfile "`SAVE_DIR'/simulated_catch_tempdraw_`fam'_`TAG'_`BASEYR'"
 
     capture confirm file "`outfile'.dta"
     if !_rc {

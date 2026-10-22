@@ -510,7 +510,7 @@ for (yr in years) {
 
 temp_raw <- data.table::as.data.table(
   readr::read_csv(
-    file.path(input_data_cd, "decadal_bottom_temp_distributions_levels.csv"),
+    file.path(input_data_cd, "decadal_bottom_temp_distributions.csv"),
     show_col_types = FALSE
   )
 )
