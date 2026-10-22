@@ -58,4 +58,5 @@ data/processed/historical_mrip/cod_hadd_catch_data.dta
 #figures
 outputs/figures/*.jpg
 outputs/figures/*.eps
+outputs/figures/*.png
 
