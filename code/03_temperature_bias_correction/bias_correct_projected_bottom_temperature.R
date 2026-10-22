@@ -17,93 +17,59 @@ library(lubridate)
 #https://onlinelibrary.wiley.com/doi/pdf/10.1002/2015JC011346 3) Generating log-normal
 # random distributions for all decades in the 80 prediction time horizon
 
+# Set global directories - user edit here
+project_dir<-"C:/Users/andrew.carr-harris/Desktop/Git/Climate-and-Catch-Dependence-in-Rec.-Fisheries"
 
-# User must ensure repository root is the working directory (i.e., project_dir<- "C:/path/to/catch-dependence")
-project_dir <- normalizePath(
-  ".",
-  winslash = "/",
-  mustWork = TRUE
-)
+process_data_dir <- file.path(project_dir,"data")
 
-processed_temp_dir <- file.path(
-  project_dir,
-  "data",
-  "processed",
-  "bottom_temperature"
-)
+climatology_years <- c(1991:2023)
 
-work_temp_bias_dir <- file.path(
-  project_dir,
-  "work",
-  "03_temperature_bias_correction"
-)
+# drive_download(
+#   as_id("https://docs.google.com/spreadsheets/d/1aaYblqkcCRF83tjLfM0R4ocM60cZpq4W/edit?usp=share_link&ouid=104786272712659294835&rtpof=true&sd=true"),
+# path= "bottom_temp.xlsx", overwrite=TRUE)
 
-dir.create(
-  processed_temp_dir,
-  recursive = TRUE,
-  showWarnings = FALSE
-)
-
-dir.create(
-  work_temp_bias_dir,
-  recursive = TRUE,
-  showWarnings = FALSE
-)
-
-climatology_years <- c(1991:2021)
-
-
-bottom_temp <- readxl::read_excel(
-  file.path(
-    processed_temp_dir,
-    "hist_daily_bt_tmps_agg_GoM.xlsx"
-  )
-) %>% 
+bottom_temp <- readxl::read_excel(file.path(process_data_dir, "daily_btemp_GoM_by_area_1993_2026.xlsx")) %>% 
   mutate(month=as.numeric(month(date)),
-         year=as.numeric(year(date)),
-         bt_tmp=mean_tmp)
+         year=as.numeric(year(date)))
 
 #Step_1. Create baseline climatology from years 1991 - 2020
 
 climatology <- bottom_temp %>%
               filter(year %in% climatology_years) %>%
               group_by(month) %>%
-            summarise(mean_climatology=mean((bt_tmp),na.rm=TRUE)) %>% ungroup()
+            summarise(mean_climatology_inshore=mean((mean_tmp_inshore),na.rm=TRUE),
+                      mean_climatology_offshore=mean((mean_tmp_offshore),na.rm=TRUE)) %>% ungroup()
 
-utils::write.csv(
-  climatology,
-  file.path(
-    work_temp_bias_dir,
-    "climatology_1991_2020.csv"
-  ),
-  row.names = FALSE
-)
+write.csv(climatology,(file.path(process_data_dir, "Climatology_1991_2023_08-22-2026.csv")))
 
 
 climatology_sd <- bottom_temp %>%
                     group_by(month) %>%
-                    summarise(c_std_dev=sd(bt_tmp,na.rm=TRUE))%>% ungroup()
+                    summarise(c_std_dev_inshore=sd(mean_tmp_inshore,na.rm=TRUE),
+                              c_std_dev_offshore=sd(mean_tmp_inshore,na.rm=TRUE))%>% ungroup()
 
 
 baseline <- bottom_temp %>%
             filter(year %in% climatology_years) %>%
+            mutate(bt_tmp_inshore = mean_tmp_inshore,
+              bt_tmp_offshore = mean_tmp_offshore) %>%
+            select(date,year,month,day,bt_tmp_inshore,bt_tmp_offshore) %>%
             left_join(bottom_temp %>% filter(year %in% climatology_years) %>%
             select(year) %>% unique %>%
             mutate(y1 = order(year)))
 
 #Step_2 bias correct variance from projections using baseline
+# drive_download(
+#   as_id("https://docs.google.com/spreadsheets/d/1kjU-W_0LWjrjVflmyp4j0tAzekVcbKJY/edit?usp=share_link&ouid=104786272712659294835&rtpof=true&sd=true"),
+#   path= "bottom_temp_deltas.xlsx", overwrite=TRUE)
 
+bottom_temp_deltas <- readxl::read_excel(file.path(process_data_dir, "mean_btemp_proj_deltas_GOM_by_area.xlsx")) %>%
+                        mutate(year=as.numeric(year))
 
-bottom_temp_deltas <- readxl::read_excel(
-  file.path(
-    processed_temp_dir,
-    "mean_bottom_temp_deltas_GoM_convex_hull_yrs_1_80.xlsx"
-  )
-)%>%
-  mutate(year=as.numeric(year),month=month-(year-1)*12)
+ggplot(bottom_temp_deltas, aes(x=year, y=mean_temp_inshore))+geom_line()+
+  facet_wrap(vars(month))
 
-
-ggplot(bottom_temp_deltas, aes(x=year, y=mean_temp))+geom_line()+
+ggplot(bottom_temp_deltas, aes(x=year, y=mean_temp_offshore))+geom_line()+
   facet_wrap(vars(month))
 
 
@@ -119,25 +85,33 @@ bottom_temp_levels <- bottom_temp_deltas  %>%
                     mutate(y1=year) %>%
                     select(-year) %>%
                     left_join(baseline, by=c("y1","month")) %>%
-                    mutate(projection = bt_tmp+mean_temp) %>%
+                    mutate(projection_inshore = bt_tmp_inshore+mean_temp_inshore,
+                           projection_offshore = bt_tmp_offshore+mean_temp_offshore) %>%
                     group_by(month) %>%
-                    mutate(sd_proj = sd(projection, na.rm=TRUE),
-                           mean_proj=mean(projection, na.rm=TRUE)) %>%
+                    mutate(sd_proj_inshore = sd(projection_inshore, na.rm=TRUE),
+                           sd_proj_offshore = sd(projection_offshore, na.rm=TRUE),
+                           mean_proj_inshore=mean(projection_inshore, na.rm=TRUE),
+                           mean_proj_offshore=mean(projection_offshore, na.rm=TRUE)) %>%
                     ungroup() %>% 
                     left_join(climatology_sd,by=c("month")) %>%
-                    mutate(sd_ratio = c_std_dev/sd_proj,
-                           new_projection=(projection-mean_proj)*sd_ratio+mean_proj) %>%
+                    mutate(sd_ratio_inshore = c_std_dev_inshore/sd_proj_inshore,
+                           sd_ratio_offshore = c_std_dev_offshore/sd_proj_offshore,
+                           new_projection_inshore=(projection_inshore-mean_proj_inshore)*sd_ratio_inshore+mean_proj_inshore,
+                           new_projection_offshore=(projection_offshore-mean_proj_offshore)*sd_ratio_offshore+mean_proj_offshore) %>%
                     group_by(month) %>% 
-                    mutate(new_avg=mean(new_projection)) %>%
+                    mutate(new_avg_inshore=mean(new_projection_inshore),
+                           new_avg_offshore=mean(new_projection_offshore)) %>%
                     ungroup()
 #Subsetting the correction factors
 Corrections <- bottom_temp_levels %>%
-  select(month,sd_ratio) %>% unique
+  select(month,sd_ratio_inshore,sd_ratio_offshore) %>% unique
 
 Distributions <- bottom_temp_levels %>% 
         group_by(cut(y1,breaks=seq(1,30, by=10),right=F),month) %>%
-        summarise(average_temp=new_projection,
-                  sd_temp=sd(new_projection))%>% ungroup()
+        summarise(average_temp_inshore=mean(new_projection_inshore),
+                  sd_temp_inshore=sd(new_projection_inshore),
+                  average_temp_offshore=mean(new_projection_offshore),
+                  sd_temp_offshore=sd(new_projection_offshore))%>% ungroup()
         
                     
 bottom_temp_distributions <- bottom_temp_deltas  %>%
@@ -146,12 +120,17 @@ bottom_temp_distributions <- bottom_temp_deltas  %>%
   select(-year) %>%
   left_join(climatology, by=c("month")) %>%
   left_join(Corrections,by=c("month")) %>%
-  mutate(projection = mean_climatology+mean_temp) %>%
+  mutate(projection_inshore = mean_climatology_inshore+mean_temp_inshore,
+         projection_offshore = mean_climatology_offshore+mean_temp_offshore) %>%
     group_by(cut(y1,seq(1,80,by=10), right=F), month) %>%
-    mutate(mean_proj=mean(projection, na.rm=TRUE),
-    new_projection=(projection-mean_proj)*sd_ratio+mean_proj) %>%
-    summarise(average_temp= mean(new_projection),
-              sd_temp = sd(new_projection, na.rm=TRUE))%>% ungroup()
+    mutate(mean_proj_inshore=mean(projection_inshore, na.rm=TRUE),
+    new_projection_inshore=(projection_inshore-mean_proj_inshore)*sd_ratio_inshore+mean_proj_inshore,
+    mean_proj_offshore=mean(projection_offshore, na.rm=TRUE),
+    new_projection_offshore=(projection_offshore-mean_proj_offshore)*sd_ratio_offshore+mean_proj_offshore) %>%
+    summarise(average_temp_inshore= mean(new_projection_inshore),
+              sd_temp_inshore = sd(new_projection_inshore, na.rm=TRUE),
+              average_temp_offshore= mean(new_projection_offshore),
+              sd_temp_offshore = sd(new_projection_offshore, na.rm=TRUE))%>% ungroup()
 
 colnames(bottom_temp_distributions)[1] <- "Cut"
 
@@ -164,8 +143,11 @@ bottom_temp_distributions <- bottom_temp_distributions %>%
     
   
 
-ggplot(bottom_temp_distributions) + aes(x=decade,y=average_temp, group=month,colour=month) +
+ggplot(bottom_temp_distributions) + aes(x=decade,y=average_temp_inshore, group=month,colour=month) +
     geom_line()
+
+ggplot(bottom_temp_distributions) + aes(x=decade,y=average_temp_offshore, group=month,colour=month) +
+  geom_line()
 
 #test to make sure means are the same, and only variances changed
 
@@ -175,34 +157,40 @@ bottom_temp_distributions_test <- bottom_temp_deltas  %>%
   select(-year) %>%
   left_join(climatology, by=c("month")) %>%
   left_join(Corrections,by=c("month")) %>%
-  mutate(projection = mean_climatology+mean_temp) %>%
+  mutate(projection_inshore = mean_climatology_inshore+mean_temp_inshore,
+         projection_offshore = mean_climatology_offshore+mean_temp_offshore) %>%
   group_by(cut(y1,seq(1,80,by=10), right=F), month) %>%
-  summarise(average_temp_test= mean(projection, na.rm=TRUE),
-            sd_temp_test = sd(projection, na.rm=TRUE)) %>% ungroup()
+  summarise(average_temp_test_inshore= mean(projection_inshore, na.rm=TRUE),
+            sd_temp_test_inshore = sd(projection_inshore, na.rm=TRUE),
+            average_temp_test_offshore= mean(projection_offshore, na.rm=TRUE),
+            sd_temp_test_offshore = sd(projection_offshore, na.rm=TRUE)) %>% ungroup()
 
 colnames(bottom_temp_distributions_test)[1] <- "Cut"
 
 bottom_temp_distributions_test <- bottom_temp_distributions_test %>%
   left_join(bottom_temp_distributions) %>% 
-  mutate(mean_difference = average_temp-average_temp_test,
-         sd_differences = sd_temp - sd_temp_test )
+  mutate(mean_difference_inshore = average_temp_inshore-average_temp_test_inshore,
+         sd_differences_inshore = sd_temp_inshore - sd_temp_test_inshore,
+         mean_difference_offshore = average_temp_offshore-average_temp_test_offshore,
+         sd_differences_offshore = sd_temp_offshore - sd_temp_test_offshore)
 
-max(bottom_temp_distributions_test$mean_difference)
-max(bottom_temp_distributions_test$sd_differences)
+max(bottom_temp_distributions_test$mean_difference_inshore)
+max(bottom_temp_distributions_test$mean_difference_offshore)
+max(bottom_temp_distributions_test$sd_differences_inshore)
+max(bottom_temp_distributions_test$sd_differences_offshore)
 
 ggplot(bottom_temp_distributions_test)+
-  aes(y=sd_differences, group=as.factor(month), colour=as.factor(month))+
+  aes(y=sd_differences_inshore, group=as.factor(month), colour=as.factor(month))+
   geom_boxplot()
 
+ggplot(bottom_temp_distributions_test)+
+  aes(y=sd_differences_offshore, group=as.factor(month), colour=as.factor(month))+
+  geom_boxplot()
 #writing the results out
 # bottom_temp_distributions$levels <- 
 
 bottom_temp_distributions <- bottom_temp_distributions[,-1]
 
-writexl::write_xlsx(
-  bottom_temp_distributions,
-  file.path(
-    processed_temp_dir,
-    "decadal_bottom_temp_distributions_levels.xlsx"
-  )
-)
+write.csv(bottom_temp_distributions,file.path(process_data_dir, "decadal_bottom_temp_distributions_levels.csv"))
+haven::write_dta(bottom_temp_distributions,file.path(process_data_dir, "decadal_bottom_temp_distributions.dta"))
+

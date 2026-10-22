@@ -1,42 +1,27 @@
 
+* For each baseline year, create 50 datasets of catch-per-trip by randomly sampling from the projected catch distribution. 
+* Each replicate will contain catch draws for each of 8 decades. Columns will include projected catch of cod and haddock 
+* by copula (including the case of independence). 
 
-* create datasets of projected catch-per-trip for each future decade 
-* throughout the code, some intermediate datasets are saved
+*OpenAI ChatGPT (GPT-5.6 Sol) was used to optimize this code. 
+
+*NOTE: this code will produce several large datasets. Please set up your data directories accordingly. 
 
 version 17
 clear all
 set more off
 
-global project_root "`c(pwd)'"
 
-global processed_mrip ///
-    "${project_root}/data/processed/historical_mrip"
+* Set global directories - user edit here
+global dir_root "C:\Users\andrew.carr-harris\Desktop\Git\Climate-and-Catch-Dependence-in-Rec.-Fisheries" // root to Github directory
+global code_root "${dir_root}/code" 
+global process_data_root "${dir_root}/data" // data directory for all other model input and output files.
 
-global model_inputs ///
-    "${project_root}/data/model_inputs"
+global directed_trips_file "${process_data_root}/directed_trips_and_regulations.csv"
 
-global directed_trips_file ///
-    "${model_inputs}/directed_trips_and_regulations.csv"
-
-global copula_output_dir ///
-    "${project_root}/work/05_copula_projection"
-
-global work_step06 ///
-    "${project_root}/work/06_prepare_simulation_inputs"
-
-global calibration_draw_dir ///
-    "${model_inputs}/catch_draws/calibration"
-
-global projection_draw_dir ///
-    "${model_inputs}/catch_draws/projection"
-
-capture mkdir "${project_root}/work/06_prepare_simulation_inputs"
-capture mkdir "${model_inputs}/catch_draws"
-capture mkdir "${calibration_draw_dir}"
-capture mkdir "${projection_draw_dir}"
 
 * Identify the range of observed catch-per-trip in order to truncate projected catch-per-trip to within that range
-use "${processed_mrip}/cod_hadd_catch_data.dta", clear
+use "${process_data_root}/cod_hadd_catch_data.dta", clear
 
 summarize tot_cat_cod, meanonly
 local max_cod = r(max)
@@ -44,45 +29,43 @@ local max_cod = r(max)
 summarize tot_cat_hadd, meanonly
 local max_hadd = r(max)
 
-***********************************
-***********2021*******************
-***********************************
-
 *Import the projected catch draws from the copula model
+local list "simulated_catch_tempdraw_Clayton_area1_newmode2 simulated_catch_tempdraw_Clayton_area1_newmode3  simulated_catch_tempdraw_Clayton_area2_newmode2 simulated_catch_tempdraw_Clayton_area2_newmode3  simulated_catch_tempdraw_Frank_area1_newmode2 simulated_catch_tempdraw_Frank_area1_newmode3  simulated_catch_tempdraw_Frank_area2_newmode2  simulated_catch_tempdraw_Frank_area2_newmode3 simulated_catch_tempdraw_Gaussian_area1_newmode2 simulated_catch_tempdraw_Gaussian_area1_newmode3 simulated_catch_tempdraw_Gaussian_area2_newmode2 simulated_catch_tempdraw_Gaussian_area2_newmode3   simulated_catch_tempdraw_Gumbel_area1_newmode2 simulated_catch_tempdraw_Gumbel_area1_newmode3  simulated_catch_tempdraw_Gumbel_area2_newmode2 simulated_catch_tempdraw_Gumbel_area2_newmode3 simulated_catch_tempdraw_independent_area1_newmode2 simulated_catch_tempdraw_independent_area1_newmode3  simulated_catch_tempdraw_independent_area2_newmode2 simulated_catch_tempdraw_independent_area2_newmode3 simulated_catch_tempdraw_Plackett_area1_newmode2 simulated_catch_tempdraw_Plackett_area1_newmode3 simulated_catch_tempdraw_Plackett_area2_newmode2 simulated_catch_tempdraw_Plackett_area2_newmode3" 
 
-local list "correlated_sample_Clayton_Area1_newmode2 correlated_sample_Clayton_Area1_newmode3  correlated_sample_Clayton_Area2_newmode2 correlated_sample_Clayton_Area2_newmode3  correlated_sample_Frank_Area1_newmode2 correlated_sample_Frank_Area1_newmode3  correlated_sample_Frank_Area2_newmode2 correlated_sample_Frank_Area2_newmode3 correlated_sample_Gaussian_Area1_newmode2 correlated_sample_Gaussian_Area1_newmode3 	 correlated_sample_Gaussian_Area2_newmode2 correlated_sample_Gaussian_Area2_newmode3   correlated_sample_Gumbel_Area1_newmode2 correlated_sample_Gumbel_Area1_newmode3  correlated_sample_Gumbel_Area2_newmode2 correlated_sample_Gumbel_Area2_newmode3 		  correlated_sample_Plackett_Area1_newmode2 correlated_sample_Plackett_Area1_newmode3 correlated_sample_Plackett_Area2_newmode2 correlated_sample_Plackett_Area2_newmode3" 
+local yrs 2019 2020 2021 2022 2023 2024
 
-
-	 
-global drawz
+foreach y of local yrs{
 foreach s of local list{
+u "${process_data_root}/`s'_`y'.dta", clear
 
-local y 2021
+*bysort replicate decade month newmode state area: gen n=_n
+*keep if n<=3000
 
-import delimited using "${copula_output_dir}/`s'_`y'.csv", clear
 sort decade month 
-gen state=25 if ma==1
-replace state=23 if me==1
-replace state=33 if nh==1
+gen state=25 if state1==1
+replace state=23 if state1==2
+replace state=33 if state1==3
+
+drop cell_weight 
+
 gen source="`s'"
 split source, parse(_)
 
-replace cod_corr = `max_cod' if cod_corr > `max_cod'
-replace cod_ind  = `max_cod' if cod_ind  > `max_cod'
-replace had_corr = `max_hadd' if had_corr > `max_hadd'
+replace catch_cod = `max_cod' if catch_cod > `max_cod'
+replace catch_had = `max_hadd' if catch_had > `max_hadd'
 
-replace had_ind  = `max_hadd' if had_ind  > `max_hadd'
-levelsof source4, clean
+drop area
+levelsof source5, clean
 
-if "`r(levels)'"=="Area1"{
+if "`r(levels)'"=="area1"{
 	gen area="inshore"
 }
 
-if "`r(levels)'"=="Area2"{
+if "`r(levels)'"=="area2"{
 	gen area="offshore"
 }
 
-levelsof source5, clean
+levelsof source6, clean
 
 if "`r(levels)'"=="newmode2"{
 	gen mode="fh"
@@ -92,700 +75,305 @@ if "`r(levels)'"=="newmode3"{
 	gen mode="pr"
 }
 
-gen area_tab= substr(source4, strlen(source4), 1)
-gen mode_tab= substr(source5, strlen(source5), 1)
-gen domain=source3+"_"+area_tab+"_"+mode_tab
+gen area_tab= substr(source5, strlen(source5), 1)
+gen mode_tab= substr(source6, strlen(source6), 1)
+gen domain=copula+"_"+area_tab+"_"+mode_tab
 levelsof domain, clean
 local file="`r(levels)'"
 
 di "`file'"
 
-keep  month decade cod_corr had_corr cod_ind had_ind mode area state source3
-sort decade month mode state area
-bysort decade month mode state area: gen n=_n
+keep month decade catch_cod catch_had mode area state copula replicate
+assert inrange(replicate,1,50)
 
-levelsof source3, clean 
-local cop="`r(levels)'"
-
-ds  month decade n state area mode source3, not 
-renvarlab `r(varlist)', postfix("_`cop'")
-drop source
+sort replicate decade month mode state area
 renvarlab, lower
+
 compress
 
-save "${work_step06}/`file'.dta", replace
+save "${process_data_root}/`file'.dta", replace
 
 }
 
-use "${work_step06}/Clayton_1_2.dta", clear 
-append using "${work_step06}/Clayton_2_2.dta"
-append using "${work_step06}/Clayton_1_3.dta"
-append using "${work_step06}/Clayton_2_3.dta"
-tempfile clayton
-save `clayton', replace 
+global directed_trips_file "${process_data_root}/directed_trips_and_regulations.csv"
+local copulas "Clayton Frank Gumbel Plackett Gaussian independent"
 
-u "${work_step06}/Frank_1_2.dta", clear 
-append using "${work_step06}/Frank_2_2.dta"
-append using "${work_step06}/Frank_1_3.dta"
-append using "${work_step06}/Frank_2_3.dta"
-tempfile Frank
-save `Frank', replace 
-
-u "${work_step06}/Gaussian_1_2.dta", clear 
-append using "${work_step06}/Gaussian_2_2.dta"
-append using "${work_step06}/Gaussian_1_3.dta"
-append using "${work_step06}/Gaussian_2_3.dta"
-tempfile Gaussian
-save `Gaussian', replace 
-
-u "${work_step06}/Plackett_1_2.dta", clear 
-append using "${work_step06}/Plackett_2_2.dta"
-append using "${work_step06}/Plackett_1_3.dta"
-append using "${work_step06}/Plackett_2_3.dta"
-tempfile Plackett
-save `Plackett', replace 
-
-u "${work_step06}/Gumbel_1_2.dta", clear 
-append using "${work_step06}/Gumbel_2_2.dta"
-append using "${work_step06}/Gumbel_1_3.dta"
-append using "${work_step06}/Gumbel_2_3.dta"
-
-merge 1:1 month decade n  mode state area using `Plackett', nogen 
-merge 1:1 month decade n  mode state area using `clayton', nogen 
-merge 1:1 month decade n  mode state area using `Gaussian', nogen 
-merge 1:1 month decade n  mode state area using `Frank', nogen 
-order decade month mode state area n
-
-save "${work_step06}/projection_catch_base.dta", replace
-
-
-reshape wide cod* had*, i(month mode n state area) j(decade)
-gen st="MA" if state==25
-replace st="NH" if state==33 
-replace st="ME" if state==23
-drop state
-rename st state 
-rename mode mode1
-rename month month1
-
-save "${work_step06}/projection_catch_base_wide.dta", replace
-
-
-global drawz
-forv i=1/100{
-
-set seed `i'
 
 import delimited using "${directed_trips_file}", clear
 
-keep if year==2021
+keep if year==`y'
 
-* replace trip values as zeroes in periods with high uncertainty according to the MRIP estimate query webpage
-replace dtrip=0 if st == 23 & year == 2021 & inlist(month,9,10)
+keep if dtrip>0
 
 tostring month, gen(month1)
 tostring period, gen(period1)
 tostring st, replace
 
 gen domain=month1+"_"+period1+"_"+mode+"_"+area+"_"+st
+destring st, gen(state)
 
-gen state="MA" if st=="25"
-replace state="NH" if st=="33" 
-replace state="ME" if st=="23"
+keep year month period mode period2 area st domain state dtrip
+encode domain, gen(domain2)
 
-keep if dtrip>0
-
-keep month period mode period2 area st  domain state  dtrip
-
-levelsof domain, local(doms)
-
-tempfile base 
-save `base', replace 
-
-global domz
-foreach d of local doms{
-	
-	u `base', clear 
-	keep if domain=="`d'"
-	
-	levelsof month, local(mon) clean
-	levelsof mode, local(md) clean
-	levelsof period2, local(pdz) clean
-	levelsof area, local(areaz) clean
-	levelsof state, local(stz) clean
-
-	use  "${work_step06}/projection_catch_base_wide.dta", clear  
-
-	keep if month1==`mon'
-	keep if mode1=="`md'"
-	keep if area=="`areaz'"
-	keep if state=="`stz'"
-	
-	count
-	local n=`r(N)'
-	
-	if `n'>=3000 {
-	
-	keep had* cod* month1 
-	sample 3000, count
-
-	gen domain="`d'"
-	gen mode1="`md'"
-	gen period2="`pdz'"
-	gen area= "`areaz'"
-	gen state= "`stz'"
-	gen tripid = ceil(_n / 30)
-	bysort tripid: gen catch_draw = _n
-	sort tripid catch_draw
-	
-	}
-	
-	else{
-		
-		local expand = ceil(3000/`n')+2
-		expand `expand'
-		sample 3000, count
-		
-		keep had* cod* month1 
-		gen domain="`d'"
-		gen mode1="`md'"
-		gen period2="`pdz'"
-		gen area= "`areaz'"
-		gen state= "`stz'"
-		
-		gen tripid = ceil(_n / 30)
-		bysort tripid: gen catch_draw = _n
-		sort tripid catch_draw
-	}
-	
-		tempfile domz`d'
-		save `domz`d'', replace
-		global domz "$domz "`domz`d''" " 
-		
-		
-}
-
-dsconcat $domz
-ds month1 domain mode1 period2 area state, not
-local vars `r(varlist)'
-foreach v of local vars{
-	replace `v'=round(`v')
-}
-
-gen draw=`i'
-split domain, parse("_")
-drop mode1 period2 area state 
-
-rename domain1 month
-rename domain2 period
-rename domain3 mode
-rename domain4 area
-rename domain5 state
-destring month period state, replace
-drop month1
-
-order domain month period mode area state  
-tostring period, gen(period1)
-tostring state, gen(st2)
-gen period2=mode+"_"+period1+"_"+area+"_"+st2
-drop st2 period1
-order domain month period mode area state tripid catch_draw draw period2
-export delimited using "${projection_draw_dir}/projection_catch_draw`i'_2021.csv", replace
-}
-
-
-***********************************
-***********2020*******************
-***********************************
-
-local list "correlated_sample_Clayton_Area1_newmode2 correlated_sample_Clayton_Area1_newmode3  correlated_sample_Clayton_Area2_newmode2 correlated_sample_Clayton_Area2_newmode3  correlated_sample_Frank_Area1_newmode2 correlated_sample_Frank_Area1_newmode3   correlated_sample_Frank_Area2_newmode2 correlated_sample_Frank_Area2_newmode3 correlated_sample_Gaussian_Area1_newmode2 correlated_sample_Gaussian_Area1_newmode3 	  correlated_sample_Gaussian_Area2_newmode2 correlated_sample_Gaussian_Area2_newmode3   correlated_sample_Gumbel_Area1_newmode2 correlated_sample_Gumbel_Area1_newmode3  correlated_sample_Gumbel_Area2_newmode2 correlated_sample_Gumbel_Area2_newmode3 		  correlated_sample_Plackett_Area1_newmode2 correlated_sample_Plackett_Area1_newmode3 correlated_sample_Plackett_Area2_newmode2 correlated_sample_Plackett_Area2_newmode3" 
-
-global drawz
-
-foreach s of local list{
-
-local y 2020
-
-import delimited using "${copula_output_dir}/`s'_`y'.csv", clear
-sort decade month 
-gen state=25 if ma==1
-replace state=23 if me==1
-replace state=33 if nh==1
-gen source="`s'"
-split source, parse(_)
-
-replace cod_corr = `max_cod' if cod_corr > `max_cod'
-replace cod_ind  = `max_cod' if cod_ind  > `max_cod'
-replace had_corr = `max_hadd' if had_corr > `max_hadd'
-replace had_ind  = `max_hadd' if had_ind  > `max_hadd'
-levelsof source4, clean
-
-if "`r(levels)'"=="Area1"{
-	gen area="inshore"
-}
-
-if "`r(levels)'"=="Area2"{
-	gen area="offshore"
-}
-
-levelsof source5, clean
-
-if "`r(levels)'"=="newmode2"{
-	gen mode="fh"
-}
-
-if "`r(levels)'"=="newmode3"{
-	gen mode="pr"
-}
-
-gen area_tab= substr(source4, strlen(source4), 1)
-gen mode_tab= substr(source5, strlen(source5), 1)
-gen domain=source3+"_"+area_tab+"_"+mode_tab
-levelsof domain, clean
-local file="`r(levels)'"
-di "`file'"
-keep  month decade cod_corr had_corr cod_ind had_ind mode area state source3
-sort decade month mode state area
-bysort decade month mode state area: gen n=_n
-
-levelsof source3, clean 
-local cop="`r(levels)'"
-
-ds  month decade n state area mode source3, not 
-renvarlab `r(varlist)', postfix("_`cop'")
-drop source
-renvarlab, lower
 compress
 
+assert !missing(year, month, period, mode, area, state, domain)
+isid year domain
 
-save "${work_step06}/`file'.dta", replace
-
-}
-
-use "${work_step06}/Clayton_1_2.dta", clear 
-append using "${work_step06}/Clayton_2_2.dta"
-append using "${work_step06}/Clayton_1_3.dta"
-append using "${work_step06}/Clayton_2_3.dta"
-tempfile clayton
-save `clayton', replace 
-
-u "${work_step06}/Frank_1_2.dta", clear 
-append using "${work_step06}/Frank_2_2.dta"
-append using "${work_step06}/Frank_1_3.dta"
-append using "${work_step06}/Frank_2_3.dta"
-tempfile Frank
-save `Frank', replace 
-
-u "${work_step06}/Gaussian_1_2.dta", clear 
-append using "${work_step06}/Gaussian_2_2.dta"
-append using "${work_step06}/Gaussian_1_3.dta"
-append using "${work_step06}/Gaussian_2_3.dta"
-tempfile Gaussian
-save `Gaussian', replace 
-
-u "${work_step06}/Plackett_1_2.dta", clear 
-append using "${work_step06}/Plackett_2_2.dta"
-append using "${work_step06}/Plackett_1_3.dta"
-append using "${work_step06}/Plackett_2_3.dta"
-tempfile Plackett
-save `Plackett', replace 
-
-u "${work_step06}/Gumbel_1_2.dta", clear 
-append using "${work_step06}/Gumbel_2_2.dta"
-append using "${work_step06}/Gumbel_1_3.dta"
-append using "${work_step06}/Gumbel_2_3.dta"
-
-merge 1:1 month decade n  mode state area using `Plackett', nogen 
-merge 1:1 month decade n  mode state area using `clayton', nogen 
-merge 1:1 month decade n  mode state area using `Gaussian', nogen 
-merge 1:1 month decade n  mode state area using `Frank', nogen 
-order decade month mode state area n
-
-save "${work_step06}/projection_catch_base.dta", replace
+tempfile directed_base
+save `directed_base', replace
 
 
-reshape wide cod* had*, i(month mode n state area) j(decade)
-gen st="MA" if state==25
-replace st="NH" if state==33 
-replace st="ME" if state==23
-drop state
-rename st state 
-rename mode mode1
-rename month month1
-
-save "${work_step06}/projection_catch_base_wide.dta", replace
+quietly levelsof domain2 if year==`y', local(doms_`y')
+local ndomains_`y' : word count `doms_`y''
+display as text "Baseline year `y': `ndomains_`y'' simulation domains"
 
 
-global drawz
-forv i=1/100{
-
-set seed `i'
-
-
-import delimited using "${directed_trips_file}", clear
-
-keep if year==2020
-
-* replace trip values as zeroes in periods with high uncertainty according to the MRIP estimate query webpage
-replace dtrip=0 if st == 23 & year == 2020 & inlist(month,5, 6)
-replace dtrip=0 if st == 23 & year == 2020 & inlist(month,9,10)
-replace dtrip=0 if st == 25 & year == 2020 & inlist(month,11,12)
-
-tostring month, gen(month1)
-tostring period, gen(period1)
-tostring st, replace
-
-gen domain=month1+"_"+period1+"_"+mode+"_"+area+"_"+st
-
-gen state="MA" if st=="25"
-replace state="NH" if st=="33" 
-replace state="ME" if st=="23"
-
-keep if dtrip>0
-
-keep month period mode period2 area st  domain state  dtrip
-
-levelsof domain, local(doms)
-
-tempfile base 
-save `base', replace 
-
-global domz
-foreach d of local doms{
+local catch_files "Clayton_1_2 Clayton_2_2 Clayton_1_3 Clayton_2_3 Frank_1_2 Frank_2_2 Frank_1_3 Frank_2_3 Gaussian_1_2 Gaussian_2_2 Gaussian_1_3 Gaussian_2_3 Gumbel_1_2 Gumbel_2_2 Gumbel_1_3 Gumbel_2_3 Plackett_1_2 Plackett_2_2 Plackett_1_3 Plackett_2_3 independent_1_2 independent_2_2 independent_1_3 independent_2_3"
 	
-	u `base', clear 
-	keep if domain=="`d'"
+local copulas "Clayton Frank Gumbel Plackett Gaussian independent"
+
+local ncopulas : word count `copulas'
+local ndecades=8
+local nspecies=2
+local expected_catchvars=`ncopulas'*`ndecades'*`nspecies'
+set seed 123456789
+
+    display as text "BASELINE YEAR `y'"
+
+    use `directed_base' if year==`y', clear
+
+    levelsof domain2, local(doms)
+    local ndomains : word count `doms'
+
+    display as text "Number of domains = `ndomains'"
+
+    forvalues r=1/50 {
+
+        display as text _newline "============================================================"
+        display as text "YEAR `y': REPLICATE `r' OF 50"
+        display as text "============================================================"
+
+
+			foreach cop of local copulas {
+
+				forvalues area_num=1/2 {
+
+					forvalues mode_num=2/3 {
+
+						local catchfile "`cop'_`area_num'_`mode_num'"
+
+						display as text ///
+							"  Loading `catchfile', replicate `r'"
+
+						use catch_cod catch_had replicate decade month state ///
+							using "${process_data_root}/`catchfile'.dta" ///
+							if replicate==`r', clear
+
+						drop replicate
+
+						compress
+
+						tempfile work_`cop'_`area_num'_`mode_num'
+
+						save `work_`cop'_`area_num'_`mode_num'', replace
+					}
+				}
+			}
+			
+        tempfile replicate_output
+        local first_domain=1
+        local ndom=0
+
+        foreach d of local doms {
+
+            local ++ndom
+
+            display as text "  Domain `ndom' of `ndomains'"
+
+            use `directed_base' if year==`y' & domain2==`d', clear
+
+			assert _N==1
+
+			local mon     = month[1]
+			local md      = mode[1]
+			local pd      = period[1]
+			local areaz   = area[1]
+			local stz     = state[1]
+			local pdz     = period2[1]
+			local domainz = domain[1]
+
+			if "`md'"=="fh" local mode_num=2
+			else if "`md'"=="pr" local mode_num=3
+			else {
+				display as error "Unknown mode: `md'"
+				error 459
+			}
+
+			if "`areaz'"=="inshore" local area_num=1
+			else if "`areaz'"=="offshore" local area_num=2
+			else {
+				display as error "Unknown area: `areaz'"
+				error 459
+			}
+        tempfile domain_wide
+        local first_decade=1
+
+        forvalues dec=1/8 {
+            tempfile decade_wide
+            local first_copula=1
+
+            foreach cop of local copulas {
+
+			use `work_`cop'_`area_num'_`mode_num'' ///
+				if decade==`dec' & month==`mon' & state==`stz', clear
+
+			count
+			local n_available=r(N)
+
+			if `n_available'>0 {
+
+				* Uniform random sampling with replacement.
+				* Cod and haddock remain paired because entire rows are sampled.
+				bsample 3000
+
+				replace catch_cod=round(catch_cod)
+				replace catch_had=round(catch_had)
+
+				gen long sample_id=_n
+			}
+			else {
+				display as text "    No catch data: replicate=`r', month=`mon', mode=`md', area=`areaz', state=`stz', decade=`dec', copula=`cop' -> zero catch"
+
+				drop _all
+				set obs 3000
+
+				gen double catch_cod=0
+				gen double catch_had=0
+				gen long sample_id=_n
+			}
+
+
+                gen int tripid=ceil(sample_id/30)
+				
+                gen byte catch_draw=mod(sample_id-1,30)+1
+                assert _N==3000
+                assert inrange(tripid,1,100)
+                assert inrange(catch_draw,1,30)
+
+                bysort tripid: assert _N==30
+                isid tripid catch_draw
+
+
+                if "`cop'"=="Clayton" {
+                    rename catch_cod catch_cod_clayton`dec'
+                    rename catch_had catch_had_clayton`dec'
+                }
+                else if "`cop'"=="Frank" {
+                    rename catch_cod catch_cod_frank`dec'
+                    rename catch_had catch_had_frank`dec'
+                }
+                else if "`cop'"=="Gaussian" {
+                    rename catch_cod catch_cod_gaussian`dec'
+                    rename catch_had catch_had_gaussian`dec'
+                }
+                else if "`cop'"=="Gumbel" {
+                    rename catch_cod catch_cod_gumbel`dec'
+                    rename catch_had catch_had_gumbel`dec'
+                }
+                else if "`cop'"=="Plackett" {
+                    rename catch_cod catch_cod_plackett`dec'
+                    rename catch_had catch_had_plackett`dec'
+                }
+                else if "`cop'"=="independent" {
+                    rename catch_cod catch_cod_independent`dec'
+                    rename catch_had catch_had_independent`dec'
+                }
+
+                keep tripid catch_draw catch_cod_* catch_had_*
+
+                if `first_copula' {
+                    save `decade_wide', replace
+                    local first_copula=0
+                }
+                else {
+					merge 1:1 tripid catch_draw using `decade_wide', assert(3) nogen
+
+                    save `decade_wide', replace
+                }
+            }
+
+            use `decade_wide', clear
+
+            assert _N==3000
+            isid tripid catch_draw
+
+            if `first_decade' {
+                save `domain_wide', replace
+                local first_decade=0
+            }
+            else {
+                merge 1:1 tripid catch_draw using `domain_wide', assert(3) nogen
+                save `domain_wide', replace
+            }
+        }
+
+        use `domain_wide', clear
+
+        assert _N==3000
+        isid tripid catch_draw
+
+        ds catch_cod* catch_had*
+        local ncatchvars : word count `r(varlist)'
+		assert `ncatchvars'==`expected_catchvars'
 		
-	levelsof month, local(mon) clean
-	levelsof mode, local(md) clean
-	levelsof period2, local(pdz) clean
-	levelsof area, local(areaz) clean
-	levelsof state, local(stz) clean
-
-	use  "${work_step06}/projection_catch_base_wide.dta", clear  
-	
-
-	keep if month1==`mon'
-	keep if mode1=="`md'"
-	keep if area=="`areaz'"
-	keep if state=="`stz'"
-	
-	count
-	local n=`r(N)'
-	
-	if `n'>=3000 {
-	
-	keep had* cod* month1 
-	sample 3000, count
-
-	gen domain="`d'"
-	gen mode1="`md'"
-	gen period2="`pdz'"
-	gen area= "`areaz'"
-	gen state= "`stz'"
-	gen tripid = ceil(_n / 30)
-	bysort tripid: gen catch_draw = _n
-	sort tripid catch_draw
-	
-	}
-	
-	else{
-		
-		local expand = ceil(3000/`n')+2
-		expand `expand'
-		sample 3000, count
-		
-		keep had* cod* month1 
-		gen domain="`d'"
-		gen mode1="`md'"
+		gen baseline_year=`y'
+		gen domain="`domainz'"
+		gen month=`mon'
+		gen period=`pd'
+		gen mode="`md'"
+		gen area="`areaz'"
+		gen state=`stz'
 		gen period2="`pdz'"
-		gen area= "`areaz'"
-		gen state= "`stz'"
-		
-		gen tripid = ceil(_n / 30)
-		bysort tripid: gen catch_draw = _n
-		sort tripid catch_draw
-	}
-	
-		tempfile domz`d'
-		save `domz`d'', replace
-		global domz "$domz "`domz`d''" " 
-		
-		
-}
+		gen int draw=`r'
 
-dsconcat $domz
-ds month1 domain mode1 period2 area state, not
-local vars `r(varlist)'
-foreach v of local vars{
-	replace `v'=round(`v')
-}
+		order baseline_year domain month period mode area state tripid catch_draw draw period2
 
-gen draw=`i'
-split domain, parse("_")
-drop mode1 period2 area state 
+        compress
 
-rename domain1 month
-rename domain2 period
-rename domain3 mode
-rename domain4 area
-rename domain5 state
-destring month period state, replace
-drop month1
-
-order domain month period mode area state  
-tostring period, gen(period1)
-tostring state, gen(st2)
-gen period2=mode+"_"+period1+"_"+area+"_"+st2
-drop st2 period1
-order domain month period mode area state tripid catch_draw draw period2
-export delimited using "${projection_draw_dir}/projection_catch_draw`i'_2020.csv", replace
-}
+        if `first_domain' {
+            save `replicate_output', replace
+            local first_domain=0
+        }
+        else {
+            append using `replicate_output'
+            save `replicate_output', replace
+        }
+    }
 
 
+		use `replicate_output', clear
 
+		sort domain tripid catch_draw
 
-***********************************
-***********2019*******************
-***********************************
+		bysort domain: assert _N==3000
+		bysort domain tripid: assert _N==30
+		isid domain tripid catch_draw
+		assert draw==`r'
+		assert baseline_year==`y'
+		distinct domain
+		assert r(ndistinct)==`ndomains'
+		ds catch_cod* catch_had*
+		local ncatchvars : word count `r(varlist)'
+		assert `ncatchvars'==`expected_catchvars'
+		distinct period2
+		local nperiods=r(ndistinct)
 
-local list "correlated_sample_Clayton_Area1_newmode2 correlated_sample_Clayton_Area1_newmode3  correlated_sample_Clayton_Area2_newmode2 correlated_sample_Clayton_Area2_newmode3  correlated_sample_Frank_Area1_newmode2 correlated_sample_Frank_Area1_newmode3   correlated_sample_Frank_Area2_newmode2 correlated_sample_Frank_Area2_newmode3 correlated_sample_Gaussian_Area1_newmode2 correlated_sample_Gaussian_Area1_newmode3 	  correlated_sample_Gaussian_Area2_newmode2 correlated_sample_Gaussian_Area2_newmode3   correlated_sample_Gumbel_Area1_newmode2 correlated_sample_Gumbel_Area1_newmode3  correlated_sample_Gumbel_Area2_newmode2 correlated_sample_Gumbel_Area2_newmode3 		  correlated_sample_Plackett_Area1_newmode2 correlated_sample_Plackett_Area1_newmode3 correlated_sample_Plackett_Area2_newmode2 correlated_sample_Plackett_Area2_newmode3" 
+		display as result "Year `y', draw `r': `ndomains' domains, `nperiods' periods, `ncatchvars' catch variables"
 
-global drawz
+		compress
 
-foreach s of local list{
+		export delimited using "${process_data_root}/projection_catch_draw`r'_`y'.csv", replace
+    }   // end replicate loop
 
-local y 2019
-
-import delimited using "${copula_output_dir}/`s'_`y'.csv", clear
-sort decade month 
-gen state=25 if ma==1
-replace state=23 if me==1
-replace state=33 if nh==1
-gen source="`s'"
-split source, parse(_)
-
-replace cod_corr = `max_cod' if cod_corr > `max_cod'
-replace cod_ind  = `max_cod' if cod_ind  > `max_cod'
-replace had_corr = `max_hadd' if had_corr > `max_hadd'
-replace had_ind  = `max_hadd' if had_ind  > `max_hadd'
-levelsof source4, clean
-
-if "`r(levels)'"=="Area1"{
-	gen area="inshore"
-}
-
-if "`r(levels)'"=="Area2"{
-	gen area="offshore"
-}
-
-levelsof source5, clean
-
-if "`r(levels)'"=="newmode2"{
-	gen mode="fh"
-}
-
-if "`r(levels)'"=="newmode3"{
-	gen mode="pr"
-}
-
-gen area_tab= substr(source4, strlen(source4), 1)
-gen mode_tab= substr(source5, strlen(source5), 1)
-gen domain=source3+"_"+area_tab+"_"+mode_tab
-levelsof domain, clean
-local file="`r(levels)'"
-di "`file'"
-keep  month decade cod_corr had_corr cod_ind had_ind mode area state source3
-sort decade month mode state area
-bysort decade month mode state area: gen n=_n
-
-levelsof source3, clean 
-local cop="`r(levels)'"
-
-ds  month decade n state area mode source3, not 
-renvarlab `r(varlist)', postfix("_`cop'")
-drop source
-renvarlab, lower
-compress
-
-
-save "${work_step06}/`file'.dta", replace
-
-}
-
-use "${work_step06}/Clayton_1_2.dta", clear 
-append using "${work_step06}/Clayton_2_2.dta"
-append using "${work_step06}/Clayton_1_3.dta"
-append using "${work_step06}/Clayton_2_3.dta"
-tempfile clayton
-save `clayton', replace 
-
-u "${work_step06}/Frank_1_2.dta", clear 
-append using "${work_step06}/Frank_2_2.dta"
-append using "${work_step06}/Frank_1_3.dta"
-append using "${work_step06}/Frank_2_3.dta"
-tempfile Frank
-save `Frank', replace 
-
-u "${work_step06}/Gaussian_1_2.dta", clear 
-append using "${work_step06}/Gaussian_2_2.dta"
-append using "${work_step06}/Gaussian_1_3.dta"
-append using "${work_step06}/Gaussian_2_3.dta"
-tempfile Gaussian
-save `Gaussian', replace 
-
-u "${work_step06}/Plackett_1_2.dta", clear 
-append using "${work_step06}/Plackett_2_2.dta"
-append using "${work_step06}/Plackett_1_3.dta"
-append using "${work_step06}/Plackett_2_3.dta"
-tempfile Plackett
-save `Plackett', replace 
-
-u "${work_step06}/Gumbel_1_2.dta", clear 
-append using "${work_step06}/Gumbel_2_2.dta"
-append using "${work_step06}/Gumbel_1_3.dta"
-append using "${work_step06}/Gumbel_2_3.dta"
-
-merge 1:1 month decade n  mode state area using `Plackett', nogen 
-merge 1:1 month decade n  mode state area using `clayton', nogen 
-merge 1:1 month decade n  mode state area using `Gaussian', nogen 
-merge 1:1 month decade n  mode state area using `Frank', nogen 
-order decade month mode state area n
-
-save "${work_step06}/projection_catch_base.dta", replace
-
-
-reshape wide cod* had*, i(month mode n state area) j(decade)
-gen st="MA" if state==25
-replace st="NH" if state==33 
-replace st="ME" if state==23
-drop state
-rename st state 
-rename mode mode1
-rename month month1
-
-save "${work_step06}/projection_catch_base_wide.dta", replace
-
-
-
-global drawz
-forv i=1/100{
-
-set seed `i'
-
-* replace trip values as zeroes in periods with high uncertainty according to the MRIP estimate query webpage
-import delimited using "${directed_trips_file}", clear
-keep if year==2019
-replace dtrip=0 if st == 23 & year == 2019 & inlist(month,5, 6)
-replace dtrip=0 if st == 23 & year == 2019 & inlist(month,9,10)
-
-tostring month, gen(month1)
-tostring period, gen(period1)
-tostring st, replace
-
-gen domain=month1+"_"+period1+"_"+mode+"_"+area+"_"+st
-
-gen state="MA" if st=="25"
-replace state="NH" if st=="33" 
-replace state="ME" if st=="23"
-
-keep if dtrip>0
-
-keep month period mode period2 area st  domain state  dtrip
-
-levelsof domain, local(doms)
-
-tempfile base 
-save `base', replace 
-
-global domz
-foreach d of local doms{
-	
-	u `base', clear 
-	keep if domain=="`d'"
-	
-	levelsof month, local(mon) clean
-	levelsof mode, local(md) clean
-	levelsof period2, local(pdz) clean
-	levelsof area, local(areaz) clean
-	levelsof state, local(stz) clean
-
-	use  "${work_step06}/projection_catch_base_wide.dta", clear  
-	
-
-	keep if month1==`mon'
-	keep if mode1=="`md'"
-	keep if area=="`areaz'"
-	keep if state=="`stz'"
-	
-	count
-	local n=`r(N)'
-	
-	if `n'>=3000 {
-	
-	keep had* cod* month1 
-	sample 3000, count
-
-	gen domain="`d'"
-	gen mode1="`md'"
-	gen period2="`pdz'"
-	gen area= "`areaz'"
-	gen state= "`stz'"
-	gen tripid = ceil(_n / 30)
-	bysort tripid: gen catch_draw = _n
-	sort tripid catch_draw
-	
-	}
-	
-	else{
-		
-		local expand = ceil(3000/`n')+2
-		expand `expand'
-		sample 3000, count
-		
-		keep had* cod* month1 
-		gen domain="`d'"
-		gen mode1="`md'"
-		gen period2="`pdz'"
-		gen area= "`areaz'"
-		gen state= "`stz'"
-		
-		gen tripid = ceil(_n / 30)
-		bysort tripid: gen catch_draw = _n
-		sort tripid catch_draw
-	}
-	
-		tempfile domz`d'
-		save `domz`d'', replace
-		global domz "$domz "`domz`d''" " 
-		
-		
-}
-
-dsconcat $domz
-ds month1 domain mode1 period2 area state, not
-local vars `r(varlist)'
-foreach v of local vars{
-	replace `v'=round(`v')
-}
-
-gen draw=`i'
-split domain, parse("_")
-drop mode1 period2 area state 
-
-rename domain1 month
-rename domain2 period
-rename domain3 mode
-rename domain4 area
-rename domain5 state
-destring month period state, replace
-drop month1
-
-order domain month period mode area state  
-tostring period, gen(period1)
-tostring state, gen(st2)
-gen period2=mode+"_"+period1+"_"+area+"_"+st2
-drop st2 period1
-order domain month period mode area state tripid catch_draw draw period2
-export delimited using "${projection_draw_dir}/projection_catch_draw`i'_2019.csv", replace
-}
+}       // end year loop

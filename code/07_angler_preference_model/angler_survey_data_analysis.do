@@ -1,51 +1,28 @@
 /********************************************************************
-Paths and inputs
 
-USER EDIT:
-Set project_root to the root of the cloned repository.
+Restricted NOAA survey data are not included in the public repository. This means 
+sections 1-6 will not run and these sections are commented out. The user can import 
+the estimated angler preferences starting in Section 7.
 
-Restricted NOAA survey data are not included in the public repository.
-Authorized users should place the following files in data/raw_restricted:
+*OpenAI ChatGPT (GPT-5.6 Sol) was used to optimize this code. 
 
-    narfs_ne_conjoint_weighted.dta
-    narfs_ne_conjoint_weighted_V3.dta
 ********************************************************************/
 
-global project_root "`c(pwd)'"
-global raw_public_dir    "$project_root/data/raw_public"
-global restricted_dir    "$project_root/data/raw_restricted"
-global processed_dir     "$project_root/data/processed"
-global model_input_dir   "$project_root/data/model_inputs"
-global output_dir        "$project_root/output/07_angler_preference_model"
+* Set global directories - user edit here
+global dir_root "C:\Users\andrew.carr-harris\Desktop\Git\Climate-and-Catch-Dependence-in-Rec.-Fisheries" // root to Github directory
+global code_root "${dir_root}/code" 
+global process_data_root "${dir_root}/data" 
+global figure_cd "${dir_root}/outputs/figures"
 
-global choice_exp_dir    "$raw_public_dir/choice_experiment"
 
-global dta_main          "$restricted_dir/narfs_ne_conjoint_weighted.dta"
-global dta_partials      "$restricted_dir/narfs_ne_conjoint_weighted_V3.dta"
-global xlsx_trips        "$choice_exp_dir/CE_trip_attributes.xlsx"
+global dta_main          "$process_data_root/narfs_ne_conjoint_weighted.dta"
+global dta_partials      "$process_data_root/narfs_ne_conjoint_weighted_V3.dta"
+global xlsx_trips        "$process_data_root/trip_attributes.xlsx"
 
-global out_demographics  "$processed_dir/angler_CE_demographics.csv"
-global out_params        "$model_input_dir/cod_parameters.csv"
+global out_demographics  "$process_data_root/angler_CE_demographics.csv"
+global out_params        "$process_data_root/cod_parameters.csv"
 
-capture mkdir "$project_root/output"
-capture mkdir "$output_dir"
-
-foreach input_file in ///
-    "$dta_main" ///
-    "$dta_partials" ///
-    "$xlsx_trips" {
-
-    capture confirm file `"`input_file'"'
-
-    if _rc {
-        display as error "Required input file not found:"
-        display as error `"`input_file'"'
-        exit 601
-    }
-}
-
-cd "$output_dir"
-
+/*
 use "$dta_main", clear
 
 /********************************************************************
@@ -496,6 +473,8 @@ local ll0r = e(ll)
 
 eststo m2: mixlogit resp cost nofish_age nofish_likely_to_fish nofish_fish_pref_more if protest!=1, ///
     group(gid) id(id) rand(sqrtckp sqrthkp sqrt_CH_keep sqrtcrl sqrthrl nofish)
+	
+estimates save  "$process_data_root/cod_hadd_params.ster", replace
 
 local ll2 = e(ll)
 estadd scalar r2_p = 1 - (`ll2'/`ll0r')
@@ -524,8 +503,72 @@ gen id_export = _n
 export delimited using "$out_demographics", replace
 restore
 
-		
-* krinksy and robb procedure for WTP calculations in paper. 
+*/
+
+/********************************************************************
+7) K&R draws for fishery simulation, using m2
+********************************************************************/
+estimates use "$process_data_root/cod_hadd_params.ster"
+
+matrix b = e(b)
+matrix V = e(V)
+assert colsof(b) == 16
+matrix C = cholesky(V)   // C*C' = V
+
+preserve
+tempfile all_draws
+local first = 1
+
+forvalues x = 1/50 {
+    * Draw all 16 estimates jointly from their sampling distribution.
+    matrix z = J(16, 1, 0)
+    forvalues j = 1/16 {
+        matrix z[`j', 1] = rnormal()
+    }
+    matrix bd = b' + C*z
+
+    * Draw 5,000 individuals conditional on this set of estimates.
+    clear
+    set obs 25000
+
+    gen double beta_cost              = bd[1,1]
+    gen double beta_opt_out_age        = bd[2,1]
+    gen double beta_opt_out_likely     = bd[3,1]
+    gen double beta_opt_out_prefer = bd[4,1]
+
+    gen double beta_sqrt_cod_keep      = rnormal(bd[5,1],  abs(bd[11,1]))
+    gen double beta_sqrt_hadd_keep     = rnormal(bd[6,1],  abs(bd[12,1]))
+    gen double beta_sqrt_cod_hadd_keep = rnormal(bd[7,1],  abs(bd[13,1]))
+    gen double beta_sqrt_cod_release   = rnormal(bd[8,1],  0)
+    gen double beta_sqrt_hadd_release  = rnormal(bd[9,1],  abs(bd[15,1]))
+    gen double beta_opt_out            = rnormal(bd[10,1], abs(bd[16,1]))
+
+    gen int draw = `x'
+    gen int id_export = _n
+
+    if `first' {
+        save `all_draws'
+        local first = 0
+    }
+    else {
+        append using `all_draws'
+        save `all_draws', replace
+    }
+}
+
+compress
+save "${process_data_root}/preference_param_draws.dta", replace
+restore
+
+
+
+**********
+/********************************************************************
+7) K&R draws for  WTP calculations in paper. 
+********************************************************************/
+clear 
+estimates use "$process_data_root/cod_hadd_params.ster"
+
 * Generate random b
 global params
 forv x=1/10000{
@@ -593,14 +636,14 @@ mat iid_err=J(`K',1,0)
 clear
 dsconcat $params
 
-save "$outputdir\k_r_draws.dta", replace
+save "${process_data_root}/k_r_draws.dta", replace
 
 
 *Cod WTP 
 global wtp
 
 forv i=0/30{
-	u "$outputdir\k_r_draws.dta", clear 
+	u "${process_data_root}/k_r_draws.dta", clear 
 	keep wtp_cod_keep_hadd`i'
 	
 	su wtp_cod_keep_hadd`i', d
@@ -646,15 +689,14 @@ twoway (rcap upper lower wtp_n_secondary if wtp_n_secondary<=15, lcolor(black)) 
 			 yline(0, lcolor(gs12) lpattern(dash)) legend(off) name(cod_mwtp, replace) ///
 			 title("Willingness-to-pay for first cod harvested", size(medium)))
 
-graph export "$outputdir/mwtp_cod_updated_7_2_26.eps", as(eps) replace
-
+graph export "${figure_cd}/mwtp_cod_updated_7_2_26.eps", as(eps) replace
 
 
 *Hadd WTP 
 global wtp
 
 forv i=0/30{
-	u "$outputdir\k_r_draws.dta", clear 
+	u "${process_data_root}/k_r_draws.dta", clear 
 	keep wtp_hadd_keep_cod`i'
 	
 	su wtp_hadd_keep_cod`i', d
@@ -700,4 +742,4 @@ twoway (rcap upper lower wtp_n_secondary if wtp_n_secondary<=15, lcolor(black)) 
 			 yline(0, lcolor(gs12)  lpattern(dash)) legend(off) name(hadd_mwtp, replace) ///
 			 title("Willingness-to-pay for first haddock harvested", size(medium)) ylab(-50(50)150))
 			 
-graph export "$outputdir/mwtp_hadd_updated_7_2_26.eps", as(eps) replace
+graph export "${figure_cd}/mwtp_hadd_updated_7_2_26.eps", as(eps) replace

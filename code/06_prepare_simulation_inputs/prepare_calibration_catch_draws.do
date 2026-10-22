@@ -1,8 +1,11 @@
 
 
-* For each baseline year, create 100 datasets of baseline-year catch-per-trip by randomly sampling a subset of the observed data
+* For each baseline year, create 50 datasets of baseline-year catch-per-trip by randomly sampling a subset of the observed data
 * These data are used to calibrate the simulation model 
 
+*OpenAI ChatGPT (GPT-5.6 Sol) was used to optimize this code. 
+
+*NOTE: this code will produce several large datasets. Please set up your data directories accordingly. 
 
 version 17
 clear all
@@ -11,16 +14,10 @@ set more off
 ssc install dsconcat
 ssc install renvarlab 
 
-global project_root "`c(pwd)'"
-global processed_mrip "${project_root}/data/processed/historical_mrip"
-global model_inputs "${project_root}/data/model_inputs"
-global directed_trips_file "${model_inputs}/directed_trips_and_regulations.csv"
-global work_step06 "${project_root}/work/06_prepare_simulation_inputs"
-global calibration_draw_dir "${model_inputs}/catch_draws/calibration"
-
-capture mkdir "${project_root}/work/06_prepare_simulation_inputs"
-capture mkdir "${model_inputs}/catch_draws"
-capture mkdir "${calibration_draw_dir}"
+* Set global directories - user edit here
+global dir_root "C:\Users\andrew.carr-harris\Desktop\Git\Climate-and-Catch-Dependence-in-Rec.-Fisheries" // root to Github directory
+global code_root "${dir_root}/code" 
+global process_data_root "${dir_root}/data" // data directory for all other model input and output files.
 
 capture which dsconcat
 if _rc {
@@ -34,135 +31,140 @@ if _rc {
     exit 199
 }
 
-local yrs 2019 2020 2021
+cd "${process_data_root}" //data stored here
+
+
+local yrs 2019 2020 2021 2022 2023 2024
 foreach y of local yrs{
 
-	use "${processed_mrip}/cod_hadd_catch_data.dta", clear
+	u "${process_data_root}/cod_hadd_catch_data.dta", clear
+	keep if gom & target
 	keep if year==`y'
-	save "${work_step06}/cod_hadd_catch_data_yr`y'.dta",  replace
+	replace new_wp_int=round(new_wp_int)
+	expand new_wp_int
+	save "${process_data_root}/cod_hadd_catch_data_yr`y'.dta",  replace
 	
 }
 
 
-forv i=1/100{
-set seed `i'
-local yrs 2019 2020 2021
-foreach y of local yrs{
+global directed_trips_file "${process_data_root}/directed_trips_and_regulations.csv"
 
-import delimited using  "${directed_trips_file}", clear
-keep if year==`y'
+forvalues i = 1/50 {
 
-tostring month, gen(month1)
-tostring period, gen(period1)
-tostring st, replace
+    set seed `i'
+	local yrs 2019 2020 2021 2022 2023 2024
 
-gen domain=month1+"_"+period1+"_"+mode+"_"+area+"_"+st
+    foreach y of local yrs {
 
-gen state="MA" if st=="25"
-replace state="NH" if st=="33" 
-replace state="ME" if st=="23"
+        import delimited using "${directed_trips_file}", clear
+        keep if year == `y'
 
-keep if dtrip>0
+        tostring month, gen(month_str)
+        tostring period, gen(period_str)
+        tostring st, replace
 
-keep month period mode period2 area st  domain state  dtrip
+        gen domain = month_str + "_" + period_str + "_" + mode + "_" + area + "_" + st
 
-levelsof domain, local(doms)
+        gen state = "MA" if st == "25"
+        replace state = "NH" if st == "33"
+        replace state = "ME" if st == "23"
 
-tempfile base 
-save `base', replace 
+        keep if dtrip > 0
+        keep month period mode period2 area st domain state dtrip
 
-global domz
-foreach d of local doms{
-	
-	u `base', clear 
-	keep if domain=="`d'"
+        levelsof domain, local(doms)
 
-	levelsof month, local(mon) clean
-	levelsof mode, local(md) clean
-	levelsof period2, local(pdz) clean
-	levelsof area, local(areaz) clean
-	levelsof state, local(stz) clean
+        tempfile base results
+        save `base', replace
 
-	use "${work_step06}/cod_hadd_catch_data_yr`y'.dta", clear	
-	gen area = "inshore" if inlist(area_x, "1", "5")
-	replace area="offshore" if inlist(area_x, "2")
-	
-	destring month, gen(month1)
-	replace mode1="fh" if inlist(mode1, "hd", "ch")
+        clear
+        save `results', emptyok replace
 
-	keep if month1==`mon'
-	keep if mode1=="`md'"
-	keep if area=="`areaz'"
-	keep if state=="`stz'"
-	
-	count
-	local n=`r(N)'
-	
-	if `n'>=3000 {
-	
-	keep tot_cat_cod tot_cat_hadd landing_cod landing_hadd month1 
-	sample 3000, count
+        foreach d of local doms {
 
-	gen domain="`d'"
-	gen mode1="`md'"
-	gen period2="`pdz'"
-	gen area= "`areaz'"
-	gen state= "`stz'"
-	gen tripid = ceil(_n / 30)
-	bysort tripid: gen catch_draw = _n
-	sort tripid catch_draw
-	
-	}
-	
-	else{
-		
-		local expand = ceil(3000/`n')+2
-		expand `expand'
-		sample 3000, count
-		
-		keep tot_cat_cod tot_cat_hadd landing_cod landing_hadd month1
-		gen domain="`d'"
-		gen mode1="`md'"
-		gen period2="`pdz'"
-		gen area= "`areaz'"
-		gen state= "`stz'"
-		
-		gen tripid = ceil(_n / 30)
-		bysort tripid: gen catch_draw = _n
-		sort tripid catch_draw
-	}
-	
-		tempfile domz`d'
-		save `domz`d'', replace
-		global domz "$domz "`domz`d''" " 
-		
-		
-}
+            use `base', clear
+            keep if domain == "`d'"
 
-dsconcat $domz
-gen year=`y'
-replace tot_cat_cod=round(tot_cat_cod) 
-replace tot_cat_hadd=round(tot_cat_hadd) 
+            levelsof month, local(mon) clean
+            levelsof mode, local(md) clean
+            levelsof period2, local(pdz) clean
+            levelsof area, local(areaz) clean
+            levelsof state, local(stz) clean
 
-gen draw=`i'
-split domain, parse("_")
-drop mode1 period2 area state 
+            use "${process_data_root}/cod_hadd_catch_data_yr`y'.dta", clear
 
-rename domain1 month
-rename domain2 period
-rename domain3 mode
-rename domain4 area
-rename domain5 state
-destring month period state, replace
-drop month1
+            gen area = "inshore" if inlist(area_x, "1", "5")
+            replace area = "offshore" if area_x == "2"
 
-order domain year month period mode area state 
-tostring period, gen(period1)
-tostring state, gen(st2)
-gen period2=mode+"_"+period1+"_"+area+"_"+st2
-drop st2 period1
-export delimited using "${calibration_draw_dir}/calib_catch_yr`y'_draw`i'.csv", replace
-}
+            capture confirm numeric variable month
+            if !_rc {
+                gen month1 = month
+            }
+            else {
+                destring month, gen(month1)
+            }
+
+            replace mode1 = "fh" if inlist(mode1, "hd", "ch")
+
+            keep if month1 == `mon'
+            keep if mode1 == "`md'"
+            keep if area == "`areaz'"
+            keep if state == "`stz'"
+
+            count
+            local n = r(N)
+
+            if `n' >= 3000 {
+
+                keep tot_cat_cod tot_cat_hadd month1 cod_release hadd_release cod_landing hadd_landing
+                sample 3000, count
+
+            }
+            else if `n' == 0 {
+
+                clear
+                set obs 3000
+                gen tot_cat_cod = 0
+                gen tot_cat_hadd = 0
+				gen cod_release = 0
+                gen hadd_release = 0
+				gen cod_landing = 0
+                gen hadd_landing = 0
+                gen month1 = `mon'
+
+            }
+            else {
+
+                local expand_n = ceil(3000 / `n')
+                expand `expand_n'
+                sample 3000, count
+                keep tot_cat_cod tot_cat_hadd month1 cod_release hadd_release cod_landing hadd_landing
+
+            }
+
+            gen domain = "`d'"
+            gen mode1 = "`md'"
+            gen period2 = "`pdz'"
+            gen area = "`areaz'"
+            gen state = "`stz'"
+            gen replicate = `i'
+
+            gen tripid = ceil(_n / 30)
+            bysort tripid: gen catch_draw = _n
+
+            append using `results'
+            save `results', replace
+        }
+
+        use `results', clear
+        sort domain tripid catch_draw
+
+        * 100 tripids x 30 catch draws within every domain
+        bysort domain: assert _N == 3000
+        bysort domain tripid: assert _N == 30
+
+	export delimited using "${process_data_root}/calib_catch_yr`y'_draw`i'.csv", replace
+    }
 }
 
 

@@ -1,9 +1,19 @@
 
 
-*Generate a dataset of directed trips and regulations for GoM cod and haddock 2010-2019 using MRIP public-use datasets
+/*******************************************************************************
+Compile historical directed-trip estimates and Gulf of Maine recreational
+ cod and haddock regulations.
 
-local yearz 2019 2020 2021
+ *OpenAI ChatGPT (GPT-5.6 Sol) was used to optimize this code. 
+*******************************************************************************/
+
+
+*MRIP directed trips and regulations for GoM cod and haddock 2019-2021
+
+local yearz  2019 2020 2021 2022 2023 2024
 local statez 23 33 25
+local start_yr 2019
+local end_yr 2024
 
 global yrz
 foreach y of local yearz{
@@ -80,7 +90,7 @@ gen mode1="sh" if inlist(mode_fx, "1", "2", "3")
 replace mode1="pr" if inlist(mode_fx, "7")
 replace mode1="fh" if inlist(mode_fx, "4", "5")
 
-drop date 
+*drop date 
 gen date=substr(id_code, 6,8)
 gen month1=substr(date, 5, 2)
 gen day1=substr(date, 7, 2)
@@ -133,9 +143,9 @@ bysort year wave strat_id psu_id id_code (dom_id): gen count_obs1=_n
 
 keep if count_obs1==1
 
-*Classify as GoM or Georges bank using NOAA-NEFSC stock delineations for Massachusetts MRIP sites
+*Classify as GoM or Georges bank
 preserve 
-import excel using  "${mrip_reference}/ma_site_list_updated_SS.xlsx", clear firstrow
+import excel using "${process_data_root}/ma_site_list_updated_SS.xlsx", clear first
 keep SITE_EXTERNAL_ID NMFS_STAT_AREA
 renvarlab, lower
 rename site_external_id intsite
@@ -224,20 +234,16 @@ replace month=12 if inlist(period, 23, 24) & month==.
 *sort dtrip
 
 
-*Exclude shore-based trips (only 258 of 947,661 (<.1%) total directed trips from 2019-2021 were shore-based))
+*Drop shore mode (only 258 of 947,661 total directed trips from 2019-2021 were shore-based)
 drop if mode=="sh"
 sort year mode period area
 rename mode mode1
 
-save "${work_step01}/regs_base.dta", replace
+save "${process_data_root}/regs_base.dta", replace
 
-use "${work_step01}/regs_base.dta", clear
-
-*expand dtrip dataste to generate a full time series
 clear 
-set obs 18
-gen period=_n
-replace period = period+5
+set obs 20
+gen period=_n +4
 gen mode1="fh"
 expand 2, gen(dup)
 replace mode1="pr" if dup==1
@@ -254,9 +260,10 @@ expand 2 if st==33, gen(dup)
 replace st=25 if dup==1
 drop dup
 
-expand 12
-bysort st period mode area: gen year=_n
-replace year=2009+year
+
+local expand = `end_yr'-`start_yr'+1
+expand `expand'
+bysort st period mode area: gen year=_n -1+`start_yr'
 gen month=1 if inlist(period, 1, 2) 
 replace month=2 if inlist(period, 3, 4) & month==.
 replace month=3 if inlist(period, 5, 6) & month==.
@@ -270,9 +277,10 @@ replace month=10 if inlist(period, 19, 20) & month==.
 replace month=11 if inlist(period, 21, 22) & month==.
 replace month=12 if inlist(period, 23, 24) & month==.
 
-merge 1:1 period mode1 area year st month using "${work_step01}/regs_base.dta"
+merge 1:1 period mode1 area year st month using  "${process_data_root}/regs_base.dta"
 drop _merge
 
+save "${process_data_root}/regs_base.dta", replace
 
 ***************************************************************
 * Create time series of haddock fishing regulations
@@ -440,16 +448,13 @@ label variable private_boat_size_limit "Private Boat Size Limit (inches)"
 label variable for_hire_boat_bag_limit "For-hire Boat Bag Limit"
 label variable private_boat_bag_limit "Private Boat Bag Limit"
 
-*keep if season_open==1
-
 * Sort by date
 sort date
 
-* Compute how many days were open in each bi-monthly period (two per month; day 1-15, day 16-end). For periods that encompass two distinct sets of cod or haddock regulations, assign that period the set of regulations that covered the majority of days in that period
+* Compute how many days were open in each period
 gen month=month(date)
 gen day=day(date)
 gen year=year(date)
-drop if year>2021
 
 gen period ="1" if day<=15 & month==1
 replace period ="2" if day>15 & month==1
@@ -481,7 +486,7 @@ replace private_boat_size_limit=100 if season_open!=1
 replace for_hire_boat_bag_limit=0 if season_open!=1
 replace private_boat_bag_limit=0 if season_open!=1
 
-replace for_hire_boat_bag_limit=100 if season_open==1 & private_boat_bag_limit==.
+replace for_hire_boat_bag_limit=100 if season_open==1 & for_hire_boat_bag_limit==.
 replace private_boat_bag_limit=100 if season_open==1 & private_boat_bag_limit==.
  
 
@@ -655,7 +660,7 @@ replace_regs, start(2014-05-01) end(2014-08-31) for_hire_size(21) private_size(2
 /* 2015 period 1
 replace_regs, start(2014-04-16) end(2014-04-30) for_hire_size(19) private_size(19) ///
     for_hire_bag(9) private_bag(9)	
-		*add different regs by state below
+		**need to add different regs by state below
 */
 	
 * 2016 
@@ -673,15 +678,32 @@ replace_regs, start(2019-09-15) end(2019-09-30) for_hire_size(21) private_size(2
     for_hire_bag(1) private_bag(1)		
 
 * 2020 
-**add different regs by mode below
+**need to add different regs by mode below
 	
 * 2021
-**add different regs by mode below
+**need to add different regs by mode below
 
-*2022 
+	*2022 
 replace_regs, start(2022-04-01) end(2022-04-14) for_hire_size(21) private_size(21) ///
     for_hire_bag(1) private_bag(1)
 
+replace_regs, start(2022-09-22) end(2022-10-07) for_hire_size(22) private_size(22) ///
+    for_hire_bag(1) private_bag(1)
+	
+*2023 
+replace_regs, start(2023-04-01) end(2023-04-23) for_hire_size(22) private_size(22) ///
+    for_hire_bag(1) private_bag(1)
+	
+replace_regs, start(2023-09-01) end(2023-10-31) for_hire_size(22) private_size(22) ///
+    for_hire_bag(1) private_bag(1)	
+	
+*2024 
+replace_regs, start(2024-09-01) end(2024-10-31) for_hire_size(23) private_size(23) ///
+    for_hire_bag(1) private_bag(1)	
+	
+*2025 
+replace_regs, start(2025-09-01) end(2025-10-31) for_hire_size(23) private_size(23) ///
+    for_hire_bag(1) private_bag(1)	
 
 * Label variables for clarity
 label variable date "Calendar Date"
@@ -691,12 +713,12 @@ label variable private_boat_size_limit "Private Boat Size Limit (inches)"
 label variable for_hire_boat_bag_limit "For-hire Boat Bag Limit"
 label variable private_boat_bag_limit "Private Boat Bag Limit"
 
-*keep if season_open==1
 
 * Sort by date
 sort date
 
-* Compute how many days were open in each bi-monthly period (two per month; day 1-15, day 16-end). For periods that encompass two distinct sets of cod or haddock regulations, assign that period the set of regulations that covered the majority of days in that period
+
+* Compute how many days were open in each period, apply regs that were in place for the majority of days in that period 
 gen month=month(date)
 gen day=day(date)
 gen year=year(date)
@@ -795,20 +817,19 @@ drop perc
 rename min cod_min
 rename bag cod_bag
 
+** Add additional regulations 
 
-* Merge to haddock time series
+* Temp save data
 merge 1:1 year period mode area st using `dates_hadd'
 sort year period mode area st
-drop if year>2021
 
 drop _merge 
 
-** Add additional regulations 
 
-* additional cod regulations 
-* In 2015, the federal cod fishery was closed, but the closure was delayed at the state level, as per Scott Steinback: "2015 was the first closure year and it took time for the states to get on board. The fishery was closed in federal waters, but the states of ME, NH, and MA allowed harvest as long as it occurred in state waters. MA had a bag=1, min size = 19" that year. Thus, MA anglers generally just followed the state regs no matter where they caught the fish because enforcement generally occurs on shore. ME did close their state fishery as well in 2015, but not until Aug. 8 that year. NH was the big culprit where they kept the 9 fish bag limit that year."
+*additional cod regulations 
+* *2015 cod closed, but I adjust to allow harvest due to state regs as per Scott: "2015 was the first closure year and it took time for the states to get on board. The fishery was closed in federal waters, but the states of ME, NH, and MA allowed harvest as long as it occurred in state waters. MA had a bag=1, min size = 19" that year. Thus, MA anglers generally just followed the state regs no matter where they caught the fish because enforcement generally occurs on shore. ME did close their state fishery as well in 2015, but not until Aug. 8 that year. NH was the big culprit where they kept the 9 fish bag limit that year."
 
-*regulation adjustments
+*new based on disaggregated data 
 replace cod_bag= 1 if year==2015 & period>=8 & period<=16 & inlist(st, 25)
 replace cod_min= 19 if year==2015 & period>=8  & period<=16 & inlist(st, 25)
 
@@ -848,7 +869,7 @@ tostring st, gen(st2)
 mvencode cod_bag hadd_bag, mv(0) override
 mvencode hadd_min cod_min, mv(100)  override
 
-merge 1:1  year period mode1 area st using "${work_step01}/regs_base.dta"
+merge 1:1  year period mode1 area st using   "${process_data_root}/regs_base.dta"
 
 sort year period mode1 area st
 drop  st2 
@@ -869,53 +890,7 @@ replace month=12 if inlist(period, 23, 24) & month==.
 mvencode dtrip, mv(0) override
 tab year
 
-tempfile regs_base2
-save `regs_base2', replace
-
-
-
-* Generate variables indicating *next year's* regulations
-tempfile new
-save `new', replace 
-
-global yrz
-
-levelsof year if year!=2021, local(yearz)
-
-foreach y of local yearz{
-local y_plus1=`y'+1
-
-u `new', clear 
-preserve 
-keep if year==`y'
-tempfile baseyear
-save `baseyear', replace
-restore
-
-keep if year==`y_plus1'
-keep period mode1 area st  month cod_bag cod_min hadd_bag hadd_min
-ds period mode1 area st  month, not
-renvarlab `r(varlist)', postfix(_t_plus1)
-merge 1:1 period mode1 area st  month using `baseyear'
-
-tempfile yrz`y'
-save `yrz`y'', replace
-global yrz "$yrz "`yrz`y''" " 
-
-}
-dsconcat $yrz
-drop if year==.
-tempfile new1
-save `new1', replace 
-
-*Now add the regs for 2021 
-u `regs_base2', clear 
-keep if year==2021
-append using `new1'
-
-sort year mode area st period
-order year month period mode1 area st mode1 dtrip cod_bag cod_min hadd_bag hadd_min cod_bag_t_plus1 cod_min_t_plus1 hadd_bag_t_plus1 hadd_min_t_plus1
-drop _merge
+keep if year>=`start_yr'
 
 tostring st, gen(st2)
 drop pd2
@@ -928,5 +903,5 @@ tostring period, gen(period3)
 gen period2 =mode+"_"+period3+"_"+area+"_"+st2
 drop period3 st2
 sort year month period mode1 area
-export delimited using  "${model_inputs}/directed_trips_and_regulations.csv", replace
 
+export delimited using "${process_data_root}/directed_trips_and_regulations.csv", replace
