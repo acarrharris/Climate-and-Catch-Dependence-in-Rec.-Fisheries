@@ -10,7 +10,7 @@ Only data needed to initialize the public analysis are distributed. Intermediate
 
 Some survey datasets requiring NOAA-NMFS disclosure review are available upon request from Sabrina Lovell ([sabrina.lovell\@noaa.gov](mailto:sabrina.lovell@noaa.gov){.email})
 
-There are many code files and input data sources in this repository. AI (GPT-5.6 Sol and Claude Opus 5) was used to optimize code in this repository and to assist with producing this README. If have any questions about the code or data, please email Andrew Carr-Harris ([acarrharris\@gmail.com](mailto:acarrharris@gmail.com){.email})
+There are many code files and input data sources in this repository. If have any questions about the code or data, please email Andrew Carr-Harris ([acarrharris\@gmail.com](mailto:acarrharris@gmail.com){.email})
 
 ## Directory setup
 
@@ -313,3 +313,5 @@ Checkpoints permit local restart but do not replace the cached cost and calibrat
 -   `independence_differences_by_state_y{year}` and `independence_differences_by_mode_y{year}`
 
 It also writes `proj_tmps_inshore_offshore.eps`. These are final outputs, not model initialization inputs.
+
+Note: AI (GPT-5.6 Sol and Claude Opus 5) was used to optimize some of the code in this repository (when indicated in the individual file) and to assist with producing this README.
