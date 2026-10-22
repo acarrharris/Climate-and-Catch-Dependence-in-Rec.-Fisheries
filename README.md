@@ -24,7 +24,7 @@ Before running the analysis, set the repository root in each script's directory 
 The example paths in the scripts refer to the authors' computer and must be replaced with the local checkout location. The same repository root must be used across all software.
 
 | Directory | Contents |
-|------------------------------------|------------------------------------|
+|----|----|
 | `code/` | Scripts organized into the nine workflow folders below |
 | `data/` | Distributed initialization inputs and locally generated intermediate datasets |
 | `mrip_data/` | Public MRIP trip and catch files downloaded separately by the user |
@@ -34,14 +34,14 @@ Ensure these directories exist and are writable. Unless otherwise stated, all da
 
 ## Data availability and access
 
-Public MRIP trip and catch datasets are downloaded separately from [NOAA Fisheries](https://www.fisheries.noaa.gov/recreational-fishing-data/recreational-fishing-data-downloads) and placed in `mrip_data/`. The wrapper searches years **1982–2024**, waves **1–6**. It skips missing files and does not download them; a successful run is not a check that the intended historical inventory is complete.
+Public MRIP trip and catch datasets are downloaded separately from [NOAA Fisheries](https://www.fisheries.noaa.gov/recreational-fishing-data/recreational-fishing-data-downloads) and placed in `mrip_data/`. The wrapper searches years **1982–2024**, waves **1–6**.
 
 Confidential VTR locations used to construct the fishing footprint are excluded. The public spatial workflow reads the supplied `data/VTR_convex_hull.gpkg`, layer `VTR_convex_hull`, and does not reconstruct that footprint from confidential points. The commented confidential-data preparation blocks are outside public execution.
 
 The distributed initialization inputs required by the active public workflow are:
 
 | Distributed input | First use |
-|------------------------------------|------------------------------------|
+|----|----|
 | `ma_site_list_updated_SS.xlsx` | Folder 01 MRIP site classification |
 | `VTR_convex_hull.gpkg` | Folder 02 fishing footprint |
 | `bottom_temp_combined_product_1959_2022_soe.nc` | Folder 02 older historical temperatures |
@@ -80,7 +80,7 @@ Braces denote filename alternatives, not literal characters. Area `1` is inshore
 **Entry point:** `run_step_01.do` calls the following scripts in order:
 
 | Script | Inputs | Outputs and handoff |
-|------------------------|------------------------|------------------------|
+|----|----|----|
 | `mrip_data_wrapper.do` | `mrip_data/trip_{year}{wave}.dta` and `mrip_data/catch_{year}{wave}.dta`; years 1982–2024, waves 1–6 | Creates session globals `$triplist` and `$catchlist` for both following scripts. Normalizes variable names to lowercase and overwrites the downloaded files in place |
 | `directed_trips_and_regs_GoM.do` | MRIP files referenced by the wrapper globals; `ma_site_list_updated_SS.xlsx`; regulations specified within the script | Generates and reuses `regs_base.dta`; exports `directed_trips_and_regulations.csv` for later catch-input preparation and simulation. Directed-trip baseline years are 2019–2024 |
 | `historical_catch_per_trip.do` | MRIP files referenced by the wrapper globals; `ma_site_list_updated_SS.xlsx` | Exports `cod_hadd_catch_data.dta` for folder 04 catch regressions and later simulation-input preparation |
@@ -92,7 +92,7 @@ All outputs in this table are generated during execution and are excluded from t
 The public scripts read the supplied fishing footprint and extract temperatures for inshore and offshore cells. They do not require confidential VTR points.
 
 | Run order | Script | Inputs | Generated dataset and handoff |
-|------------------|------------------|------------------|------------------|
+|----|----|----|----|
 | 1 | `extract_historical_bottom_temperature_by_area_1959.R` | `bottom_temp_combined_product_1959_2022_soe.nc`; `VTR_convex_hull.gpkg` | `daily_btemp_GoM_by_area_1959_2022.xlsx` → compiler |
 | 2 | `extract_historical_bottom_temperature_by_area.R` | `GLORYS_BottomT_USNES_1993_2026.nc`; `VTR_convex_hull.gpkg` | `daily_btemp_GoM_by_area_1993_2026.xlsx` → compiler and folder 03 |
 | 3 | `compile_bottom_temp_products.R` | Both daily historical XLSX files above | `daily_btemp_GoM_by_area_combined_1959_2026.xlsx` → folder 04 historical monthly temperature preparation |
@@ -107,12 +107,12 @@ The newer historical extraction also saves diagnostic figures in `outputs/figure
 Run `bias_correct_projected_bottom_temperature.R` after the newer historical extraction and projected-delta extraction.
 
 | Inputs | Producer |
-|------------------------------------|------------------------------------|
+|----|----|
 | `daily_btemp_GoM_by_area_1993_2026.xlsx` | Folder 02 newer historical extraction |
 | `mean_btemp_proj_deltas_GoM_by_area.xlsx` | Folder 02 projected-delta extraction |
 
 | Generated outputs | Handoff |
-|------------------------------------|------------------------------------|
+|----|----|
 | `Climatology_1991_2023_08-22-2026.csv` | Climatology summary |
 | `decadal_bottom_temp_distributions.csv` | Bias-corrected temperature distribution summary |
 | `decadal_bottom_temp_distributions.dta` | Folder 04 temperature draws |
@@ -132,7 +132,7 @@ Outputs: `temps_1_{rep}.dta` and `temps_2_{rep}.dta`, for `rep = 1,…,50`. Area
 Estimates cod and haddock catch-per-trip models conditional on temperature, biomass, and other covariates. Requires:
 
 | Input | Origin |
-|------------------------------------|------------------------------------|
+|----|----|
 | `cod_hadd_catch_data.dta` | Folder 01 |
 | `daily_btemp_GoM_by_area_combined_1959_2026.xlsx` | Folder 02 |
 | `Assessment_TimeSeries_Data_Western_GOM_cod_biomass.xlsx` | Distributed initialization input |
@@ -141,7 +141,7 @@ Estimates cod and haddock catch-per-trip models conditional on temperature, biom
 Generated model outputs:
 
 | Output family | Names and use |
-|------------------------------------|------------------------------------|
+|----|----|
 | Analysis data | `analysis_file_Sept_28_2026.dta` → later catch projection scripts |
 | Saved estimates | `cod12.ster`, `haddock12.ster`, `cod13.ster`, `haddock13.ster`, `cod212.ster`, `haddock212.ster` → later catch projection scripts; the offshore regression pools modes |
 | Joint parameter vectors | `parameters_SUEST_Sept_28_2026_{suffix}.xlsx` → later catch projection scripts |
@@ -151,14 +151,14 @@ Generated model outputs:
 | Separate-species covariance matrices | `sigma_Sept_28_2026_{suffix}{species}.xlsx` |
 | Log residuals and associated fields | `logresiduals_Sept_28_2026_area1newmode2.csv`, `logresiduals_Sept_28_2026_area1newmode3.csv`, `logresiduals_Sept_28_2026_area2newmode2.csv`, `logresiduals_Sept_28_2026_area2newmode3.csv` → corresponding MATLAB scripts in folder 05 |
 
-For the workbook families, `suffix` is `area1newmode2`, `area1newmode3`, or `area2`; `species` is `cod` or `haddock`. Separate-species workbook names append species directly to the suffix, for example `parameters_Sept_28_2026_area2cod.xlsx`. The supplied MATLAB scripts read the log-residual CSVs, not these workbooks. All regression outputs are generated intermediates and are not distributed.
+For the workbook families, `suffix` is `area1newmode2`, `area1newmode3`, or `area2`; `species` is `cod` or `haddock`. Separate-species workbook names append species directly to the suffix, for example `parameters_Sept_28_2026_area2cod.xlsx`. The supplied MATLAB scripts read the log-residual CSVs. All regression outputs are generated intermediates and are not distributed.
 
 ### 5. `05_copula_projection`
 
 Run the four MATLAB scripts after the corresponding residual CSVs have been generated in folder 04:
 
 | MATLAB script | Input CSV | Output TAG |
-|------------------------|------------------------|------------------------|
+|----|----|----|
 | `copula_fit_area1_newmode2.m` | `logresiduals_Sept_28_2026_area1newmode2.csv` | `area1_newmode2` |
 | `copula_fit_area1_newmode3.m` | `logresiduals_Sept_28_2026_area1newmode3.csv` | `area1_newmode3` |
 | `copula_fit_area2_newmode2.m` | `logresiduals_Sept_28_2026_area2newmode2.csv` | `area2_newmode2` |
@@ -169,7 +169,7 @@ These scripts estimate five copulas and generate residual draws for subsequent c
 Each script writes:
 
 | Generated output | Contents and use |
-|------------------------------------|------------------------------------|
+|----|----|
 | `copula_estimates_{TAG}.csv` | Copula parameter estimates, bootstrap confidence intervals, bootstrap counts, and weighted association summary |
 | `residual_draws_{family}_{TAG}.csv` | Paired both-species log residuals; columns `draw_id`, `r_cod`, `r_had` |
 | `residual_draws_onespecies_{TAG}.csv` | Single-species residual pools; columns `draw_id`, `r_cod_only`, `r_had_only` |
@@ -188,7 +188,7 @@ This folder first generates projected catch outcomes using the folder 04 fitted 
 Run all four projection scripts after folders 04 and 05:
 
 | Script | TAG | Saved estimates | Parameter, covariance and knot workbook suffix |
-|------------------|------------------|------------------|------------------|
+|----|----|----|----|
 | `project_catch_per_trip_12_2019_2024_tempdraw_R1.do` | `area1_newmode2` | `cod12.ster`, `haddock12.ster` | `area1newmode2` |
 | `project_catch_per_trip_13_2019_2024_tempdraw_R1.do` | `area1_newmode3` | `cod13.ster`, `haddock13.ster` | `area1newmode3` |
 | `project_catch_per_trip_22_2019_2024_tempdraw_R1.do` | `area2_newmode2` | `cod212.ster`, `haddock212.ster` | `area2` |
@@ -210,7 +210,7 @@ Other generated working files are `donors_{TAG}_{year}.dta`, `cellw_{TAG}_{year}
 #### Simulation catch preparation
 
 | Script | Inputs | Generated outputs and handoff |
-|------------------------|------------------------|------------------------|
+|----|----|----|
 | `prepare_calibration_catch_draws.do` | Folder 01 `cod_hadd_catch_data.dta` and `directed_trips_and_regulations.csv` | Working `cod_hadd_catch_data_yr{year}.dta`, then `calib_catch_yr{year}_draw{draw}.csv` → folder 09 calibration and closure |
 | `prepare_projection_catch_draws.do` | Folder 01 catch .dta for observed catch bounds; directed-trip CSV; all projected catch .dta files above | Working `{family}_{area}_{mode}.dta`, then `projection_catch_draw{draw}_{year}.csv` → folder 09 correlated and independent projection branches |
 
@@ -223,11 +223,11 @@ The calibration preparation script can run immediately after folder 01; it does 
 Run the public sections of `angler_survey_data_analysis.do` before fishery simulation. The restricted-data sections 1–6 are commented out. Public execution starts at section 7 by importing the supplied `cod_hadd_params.ster`.
 
 | Active input | Role |
-|------------------------------------|------------------------------------|
+|----|----|
 | `cod_hadd_params.ster` | Previously estimated mixed-logit coefficients and covariance matrix |
 
 | Generated output | Consumer or purpose |
-|------------------------------------|------------------------------------|
+|----|----|
 | `preference_param_draws.dta` | Folder 09 calibration; contains 50 joint parameter draws and 25,000 simulated individual parameter vectors per draw |
 | `angler_CE_demographics.csv` | Folder 09 calibration; contains distirbution of demographics derived from the angler survey data |
 | `k_r_draws.dta` | Separate willingness-to-pay calculations within this script |
@@ -241,7 +241,7 @@ The commented estimation branch references `narfs_ne_conjoint_weighted.dta`, `na
 ### 8. `08_population characteristics`
 
 | Script | Public inputs | Outputs and handoff |
-|------------------------|------------------------|------------------------|
+|----|----|----|
 | `age_distribution.do` | Aggregate age-frequency values embedded in the script | `age_distribution_by_state.csv` → folder 09 calibration |
 | `expenditure_survey_trip_costs.do` | No active restricted-data processing; public execution uses the supplied `trip_cost_distribution.dta` | Commented provenance code documents how the supplied cost distribution was prepared |
 
@@ -256,7 +256,7 @@ The expenditure script's entire preparation block is commented out because it us
 #### External and upstream inputs
 
 | Input | Origin and reader |
-|------------------------------------|------------------------------------|
+|----|----|
 | `directed_trips_and_regulations.csv` | Folder 01 → wrapper calibration, projection, and closure branches |
 | `calib_catch_yr{year}_draw{draw}.csv` | Folder 06 → wrapper calibration and closure |
 | `projection_catch_draw{draw}_{year}.csv` | Folder 06 → both projection treatments |
@@ -270,7 +270,7 @@ The expenditure script's entire preparation block is commented out because it us
 #### Internal execution order
 
 | Order | Script | Role and generated handoff |
-|------------------------|------------------------|------------------------|
+|----|----|----|
 | 1 | Wrapper Part A → `find_p_star_values_corr.R` → `calibration_loop_corr.R` | Calibrate harvest against baseline targets; cache sampled costs/preferences and baseline outcomes; write per-draw p-star checkpoints and combined p-star table |
 | 2 | Wrapper Part B → `projection_corr.R` | Use calibrated p-stars, baseline caches, and projected catch inputs; write correlated model and Kendall's tau results |
 | 3 | Wrapper Part B → `projection_ind.R` | Use the same baseline calibration for the independent treatment; write results with `_ind` suffix |
@@ -286,7 +286,7 @@ The wrapper sources steps 5–7 in that order from `code/09_fishery_simulation/`
 All files below are written under `data/`. They are regenerated and are excluded from distributed initialization data.
 
 | Stage | Generated files |
-|------------------------------------|------------------------------------|
+|----|----|
 | Calibration and restart | `p_star_checkpoint_corr_{year}_draw{draw}.rds`; `p_star_values_2019_2024.rds`; `costs_data_{year}draw{draw}.rds`; `calibration_data_{year}draw{draw}.rds` |
 | Correlated projection | `model_output_y{year}_draw{draw}.xlsx`; `ktau_output_y{year}_draw{draw}.xlsx`; `ktau_output_strata_y{year}_draw{draw}.xlsx`; `projection_diagnostics_{year}_draw{draw}.rds` |
 | Independent projection | The same model, tau, and stratum workbook families with `_ind.xlsx`; `projection_diagnostics_{year}_draw{draw}_ind.rds` |
